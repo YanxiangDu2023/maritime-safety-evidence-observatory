@@ -15,6 +15,11 @@ REFRESH = importlib.util.module_from_spec(REFRESH_SPEC)
 assert REFRESH_SPEC.loader
 REFRESH_SPEC.loader.exec_module(REFRESH)
 
+CONTEXT_REFRESH_SPEC = importlib.util.spec_from_file_location("refresh_context_data", ROOT / "scripts" / "refresh_context_data.py")
+CONTEXT_REFRESH = importlib.util.module_from_spec(CONTEXT_REFRESH_SPEC)
+assert CONTEXT_REFRESH_SPEC.loader
+CONTEXT_REFRESH_SPEC.loader.exec_module(CONTEXT_REFRESH)
+
 
 class PersonClassificationTests(unittest.TestCase):
     def test_injured_excludes_no_injury(self):
@@ -33,6 +38,9 @@ class StatisticalHelperTests(unittest.TestCase):
         self.assertLess(low, 0.25)
         self.assertGreater(high, 0.25)
 
+    def test_average_precision_rewards_correct_ranking(self):
+        self.assertEqual(BUILD.average_precision([0.9, 0.8, 0.2, 0.1], [1, 1, 0, 0]), 1.0)
+
 
 class AutomatedRefreshTests(unittest.TestCase):
     def test_build_timestamp_does_not_trigger_publication(self):
@@ -44,6 +52,13 @@ class AutomatedRefreshTests(unittest.TestCase):
         first = {"meta": {"built_at": "one"}, "records": [1]}
         second = {"meta": {"built_at": "two"}, "records": [1, 2]}
         self.assertNotEqual(REFRESH.comparable_dashboard(first), REFRESH.comparable_dashboard(second))
+
+    def test_discovers_latest_port_table_link_from_official_page(self):
+        html = '<a href="/media/current/port0499.ods">PORT0499</a>'
+        self.assertEqual(
+            CONTEXT_REFRESH.discover_port0499_url(html, "https://www.gov.uk/datasets/page"),
+            "https://www.gov.uk/media/current/port0499.ods",
+        )
 
 
 class BuiltArtifactTests(unittest.TestCase):

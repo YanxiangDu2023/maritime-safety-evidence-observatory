@@ -132,8 +132,31 @@ def roc_auc(predictions: list[float], outcomes: list[int]) -> float:
     negatives = len(outcomes) - positives
     if not positives or not negatives:
         return 0.5
-    rank_sum = sum(rank for rank, (_, outcome) in enumerate(ranked, start=1) if outcome)
+    rank_sum = 0.0
+    index = 0
+    while index < len(ranked):
+        end = index + 1
+        while end < len(ranked) and ranked[end][0] == ranked[index][0]:
+            end += 1
+        average_rank = ((index + 1) + end) / 2
+        rank_sum += average_rank * sum(outcome for _, outcome in ranked[index:end])
+        index = end
     return (rank_sum - positives * (positives + 1) / 2) / (positives * negatives)
+
+
+def average_precision(predictions: list[float], outcomes: list[int]) -> float:
+    """Area-style precision-recall summary using average precision."""
+    ranked = sorted(zip(predictions, outcomes), key=lambda pair: pair[0], reverse=True)
+    positives = sum(outcomes)
+    if not positives:
+        return 0.0
+    true_positives = 0
+    precision_at_positive = 0.0
+    for rank, (_, outcome) in enumerate(ranked, start=1):
+        if outcome:
+            true_positives += 1
+            precision_at_positive += true_positives / rank
+    return precision_at_positive / positives
 
 
 def calibration_bins(predictions: list[float], outcomes: list[int], bin_count: int = 10) -> list[dict]:
@@ -199,11 +222,18 @@ def cross_validate_logistic(
     true_negative = sum(outcome == 0 and prediction < threshold for prediction, outcome in zip(predictions, outcomes))
     false_negative = sum(outcome == 1 and prediction < threshold for prediction, outcome in zip(predictions, outcomes))
     brier = sum((prediction - outcome) ** 2 for prediction, outcome in zip(predictions, outcomes)) / len(outcomes)
+    sensitivity = true_positive / (true_positive + false_negative) if true_positive + false_negative else 0
+    specificity = true_negative / (true_negative + false_positive) if true_negative + false_positive else 0
+    precision = true_positive / (true_positive + false_positive) if true_positive + false_positive else 0
     return {
         "folds": folds,
         "auc": round(roc_auc(predictions, outcomes), 3),
+        "average_precision": round(average_precision(predictions, outcomes), 3),
         "brier": round(brier, 4),
         "threshold": threshold,
+        "sensitivity": round(sensitivity, 3),
+        "specificity": round(specificity, 3),
+        "precision": round(precision, 3),
         "confusion_matrix": {
             "true_positive": true_positive,
             "false_positive": false_positive,
@@ -427,7 +457,7 @@ def person_severity_model(persons: list[dict[str, str]]) -> dict:
     result = logistic_regression(design, outcomes, [item["label"] for item in specifications], groups=groups)
     result["specifications"] = specifications
     result["outcome_definition"] = "Serious injury, confirmed death, or missing (death presumed)"
-    result["reference_outcome"] = "Minor injury or no injury"
+    result["reference_outcome"] = "Minor injury, no injury, or injury severity unavailable"
     result["unit"] = "Affected-person record"
     return result
 

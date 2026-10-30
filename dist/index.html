@@ -7,7 +7,7 @@
     <title>Maritime Safety Evidence Observatory</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/leaflet.css" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body>
     <div class="loading-screen" id="loadingScreen">
@@ -240,7 +240,14 @@
 
           <div class="fixed-scope-notice"><strong>Full-snapshot models</strong><span>Left-side data filters are paused because changing them would require refitting the models. Use the dedicated factor, significance, metric and sample-size controls inside each analysis.</span></div>
 
-          <div class="analysis-banner">
+          <nav class="consequence-subnav" aria-label="Consequence analysis sections">
+            <button type="button" data-consequence-target="consequenceOccurrence">Occurrence severity</button>
+            <button type="button" data-consequence-target="consequenceHuman">Human consequences</button>
+            <button type="button" data-consequence-target="consequenceCollision">Collision pairs</button>
+            <button type="button" data-consequence-target="consequenceDamage">Vessel damage</button>
+          </nav>
+
+          <div class="analysis-banner" id="consequenceOccurrence">
             <div><span>MODEL SAMPLE</span><strong id="modelSample">—</strong><small>reported occurrences</small></div>
             <div><span>SERIOUS OUTCOMES</span><strong id="modelOutcomes">—</strong><small>serious / very serious</small></div>
             <div><span>VALIDATED DISCRIMINATION</span><strong id="modelAuc">—</strong><small>5-fold cross-validated ROC AUC</small></div>
@@ -267,17 +274,21 @@
                 <div id="calibrationChart" class="calibration-chart svg-chart" aria-label="Calibration chart comparing predicted and observed outcome rates"></div>
                 <div class="validation-metrics">
                   <div><span>CV ROC AUC</span><strong id="validationAuc">—</strong></div>
+                  <div><span>Average precision</span><strong id="validationAveragePrecision">—</strong></div>
                   <div><span>Brier score</span><strong id="validationBrier">—</strong></div>
+                  <div><span>Sensitivity @ 0.50</span><strong id="validationSensitivity">—</strong></div>
+                  <div><span>Precision @ 0.50</span><strong id="validationPrecision">—</strong></div>
+                  <div><span>Specificity @ 0.50</span><strong id="validationSpecificity">—</strong></div>
                   <div><span>True positive</span><strong id="validationTp">—</strong></div>
                   <div><span>False negative</span><strong id="validationFn">—</strong></div>
                   <div><span>True negative</span><strong id="validationTn">—</strong></div>
                   <div><span>False positive</span><strong id="validationFp">—</strong></div>
-                  <p>AUC measures ranking discrimination; the Brier score measures probability error. Confusion-matrix counts use a 0.50 probability threshold and reveal the expected sensitivity trade-off for an imbalanced outcome.</p>
+                  <p>AUC measures ranking discrimination; average precision is more informative for an imbalanced positive outcome; the Brier score measures probability error. Threshold metrics and confusion counts use 0.50 and show that a model can rank cases reasonably while still missing many positives at that operating point.</p>
                 </div>
               </div>
             </article>
 
-            <article class="panel person-flow-panel wide-panel">
+            <article class="panel person-flow-panel wide-panel" id="consequenceHuman">
               <div class="panel-header"><div><span class="panel-kicker">Person-level pathway</span><h2>Occurrence event → person type → recorded outcome</h2></div><span class="panel-note">3,040 affected-person records</span></div>
               <div id="personFlow" class="person-flow" role="img" aria-describedby="personFlowSummary" aria-label="Flow diagram of events, affected people and outcomes"></div>
               <p id="personFlowSummary" class="sr-only"></p>
@@ -292,6 +303,12 @@
                 <div><span>GROUPED CV AUC</span><strong id="personModelAuc">—</strong></div>
                 <p>People from the same occurrence stay in the same validation fold. Confidence intervals use occurrence-clustered sandwich standard errors.</p>
               </div>
+              <div class="model-diagnostics" aria-label="Person model validation diagnostics">
+                <div><span>Average precision</span><strong id="personAveragePrecision">—</strong></div>
+                <div><span>Sensitivity @ 0.50</span><strong id="personSensitivity">—</strong></div>
+                <div><span>Precision @ 0.50</span><strong id="personPrecision">—</strong></div>
+                <div><span>Specificity @ 0.50</span><strong id="personSpecificity">—</strong></div>
+              </div>
               <div class="analysis-controls" aria-label="Person model filters">
                 <label><span>Factor group</span><select id="personFactorGroup"><option>All</option><option>Demographics</option><option>Role &amp; duty</option><option>Vessel category</option><option>Occurrence event</option></select></label>
                 <label class="control-check"><input id="personSignificantOnly" type="checkbox" /><span>Only 95% CI excluding 1</span></label>
@@ -304,7 +321,7 @@
               <p class="chart-footnote">Outcome: serious injury, confirmed death or missing with death presumed. Results are conditional on appearing in the affected-person table and do not identify causal effects.</p>
             </article>
 
-            <article class="panel collision-pair-panel wide-panel">
+            <article class="panel collision-pair-panel wide-panel" id="consequenceCollision">
               <div class="panel-header"><div><span class="panel-kicker">Multi-vessel structure</span><h2>Collision pairing matrix</h2></div><span class="panel-note"><strong id="collisionPairN">—</strong> unique collision occurrences</span></div>
               <div class="analysis-controls" aria-label="Collision matrix filters">
                 <label><span>Cell metric</span><select id="collisionMetric"><option value="count">Occurrence count</option><option value="serious">Serious share</option><option value="casualties">Recorded casualties</option></select></label>
@@ -314,16 +331,22 @@
               <div class="collision-matrix-scroll"><div id="collisionMatrix" class="collision-matrix"></div></div>
               <div id="collisionDetail" class="selection-detail" aria-live="polite"></div>
               <div class="collision-legend" id="collisionLegend"></div>
-              <p class="chart-footnote">Each cell counts unique collision occurrences containing that vessel-category pairing. An occurrence involving more than two vessels can contribute to more than one cell. The fixed detail panel reports the Wilson 95% interval and recorded casualties.</p>
+              <p class="chart-footnote">Only the upper triangle is displayed because pairings are symmetric. Each visible cell counts unique collision occurrences containing that vessel-category pairing. An occurrence involving more than two vessels can contribute to more than one cell. The fixed detail panel reports the Wilson 95% interval and recorded casualties.</p>
             </article>
 
-            <article class="panel deep-model-panel wide-panel">
+            <article class="panel deep-model-panel wide-panel" id="consequenceDamage">
               <div class="panel-header"><div><span class="panel-kicker">Vessel-level adjusted model</span><h2>Material damage or vessel loss</h2></div><span class="panel-note">Occurrence-clustered 95% CI</span></div>
               <div class="deep-model-summary">
                 <div><span>VESSEL RECORDS</span><strong id="damageModelN">—</strong></div>
                 <div><span>MATERIAL DAMAGE / LOSS</span><strong id="damageModelOutcomes">—</strong></div>
                 <div><span>GROUPED CV AUC</span><strong id="damageModelAuc">—</strong></div>
                 <p>Age and gross tonnage are modelled continuously. Multiple vessels from the same occurrence are clustered together for uncertainty and validation.</p>
+              </div>
+              <div class="model-diagnostics" aria-label="Vessel damage model validation diagnostics">
+                <div><span>Average precision</span><strong id="damageAveragePrecision">—</strong></div>
+                <div><span>Sensitivity @ 0.50</span><strong id="damageSensitivity">—</strong></div>
+                <div><span>Precision @ 0.50</span><strong id="damagePrecision">—</strong></div>
+                <div><span>Specificity @ 0.50</span><strong id="damageSpecificity">—</strong></div>
               </div>
               <div class="analysis-controls" aria-label="Vessel damage model filters">
                 <label><span>Factor group</span><select id="damageFactorGroup"><option>All</option><option>Vessel characteristics</option><option>Vessel category</option><option>Occurrence event</option><option>Occurrence context</option></select></label>
@@ -403,6 +426,7 @@
 
             <article class="panel pipeline-panel">
               <div class="panel-header"><div><span class="panel-kicker">Reproducibility</span><h2>Evidence pipeline</h2></div></div>
+              <div class="pipeline-status"><strong>Monthly source check enabled</strong><span>First Monday, 09:00 Europe/Stockholm. A new public version is built only when official source fingerprints change.</span></div>
               <div class="pipeline">
                 <div><span>01</span><strong>Official CSV exports</strong><small>Source preserved</small></div>
                 <i></i><div><span>02</span><strong>Schema & relationship checks</strong><small>Failures recorded</small></div>
@@ -447,7 +471,7 @@
 
         <footer>
           <div><strong>Built by Amanda Du</strong><span>Data Analyst portfolio project using public MAIB data.</span><a href="https://github.com/YanxiangDu2023" target="_blank" rel="noreferrer">GitHub profile ↗</a></div>
-          <div><span id="footerUpdated">Source update —</span><span id="footerBuilt">Build —</span><span>Monthly automated check</span><span>Methodology-first design</span></div>
+          <div><span id="footerUpdated">Source update —</span><span id="footerBuilt">Build —</span><span>Monthly check enabled · source-change builds</span><span>Methodology-first design</span></div>
         </footer>
       </main>
     </div>
@@ -459,6 +483,6 @@
     </dialog>
 
     <script src="assets/leaflet.js"></script>
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=12"></script>
   </body>
 </html>

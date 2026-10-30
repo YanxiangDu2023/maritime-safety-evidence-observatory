@@ -118,8 +118,8 @@ function setupFilters() {
 
 function resetFilters() {
   const { year_min, year_max } = state.data.meta;
-  const start = state.tab === "context" ? state.contextYear : year_min;
-  const end = state.tab === "context" ? state.contextYear : year_max;
+  const start = year_min;
+  const end = year_max;
   state.filters = { yearStart: start, yearEnd: end, event: "All", vessel: "All", severity: "All" };
   $("yearStart").value = start;
   $("yearEnd").value = end;
@@ -130,6 +130,16 @@ function resetFilters() {
   $("severityFilter").value = "All";
   state.selectedPattern = null;
   applyFilters();
+}
+
+function contextRecords() {
+  const f = state.filters;
+  return state.data.records.filter((row) =>
+    row.year === state.contextYear &&
+    (f.event === "All" || row.event === f.event) &&
+    (f.vessel === "All" || row.vessel_category === f.vessel) &&
+    (f.severity === "All" || row.severity === f.severity)
+  );
 }
 
 function applyFilters() {
@@ -162,7 +172,7 @@ function setFilterMode(tab) {
   $("filterModeNote").textContent = isModelTab
     ? "Full-snapshot models: use the controls inside each panel."
     : isContextTab
-      ? "Year follows Context year; other filters remain active."
+      ? "Map year uses Context year; other filters remain active."
       : "Filters apply to descriptive views.";
   if (isModelTab) {
     $("scopeCount").textContent = numberFormat.format(state.data.analysis.severity_model.n);
@@ -371,7 +381,7 @@ function renderContextOccurrences() {
   if (!state.contextOccurrenceLayer) return;
   state.contextOccurrenceLayer.clearLayers();
   if (!$("contextOccurrences").checked) return;
-  const valid = state.filtered.filter((row) => row.year === state.contextYear && Number.isFinite(row.lat) && Number.isFinite(row.lon));
+  const valid = contextRecords().filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lon));
   const step = Math.max(1, Math.ceil(valid.length / 1500));
   valid.filter((_, index) => index % step === 0).forEach((row) => {
     L.circleMarker([row.lat, row.lon], { radius: serious(row) ? 3.8 : 2.7, color: serious(row) ? palette.red : "#132f3a", fillColor: serious(row) ? palette.red : "#f6f2e8", fillOpacity: .78, weight: .8 })
@@ -400,6 +410,8 @@ function renderContext() {
     : `<span><i class="context-swatch depth"></i>Mean seabed depth</span><span><i class="context-dot occurrence"></i>${state.contextYear} occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`;
   renderPortContext();
   if (state.tab === "context") {
+    $("scopeCount").textContent = numberFormat.format(contextRecords().length);
+    $("scopeLabel").textContent = `${state.contextYear} scope`;
     initializeContextMap();
     updateContextWms();
     renderContextOccurrences();
@@ -415,7 +427,7 @@ function setupContextControls() {
   $("contextLayer").addEventListener("change", (event) => { state.contextLayer = event.target.value; renderContext(); });
   $("contextYear").addEventListener("change", (event) => {
     state.contextYear = Number(event.target.value);
-    syncOccurrenceYear(state.contextYear);
+    renderContext();
   });
   $("contextVessel").addEventListener("change", (event) => { state.contextVessel = event.target.value; renderContext(); });
   $("contextOccurrences").addEventListener("change", renderContextOccurrences);
@@ -556,7 +568,8 @@ function renderCollisionMatrix(matrix) {
   const cellLookup = new Map(matrix.cells.map((cell) => [`${cell.first}|${cell.second}`, cell]));
   const findCell = (first, second) => cellLookup.get(`${first}|${second}`) || cellLookup.get(`${second}|${first}`);
   const header = `<div class="collision-row collision-head"><div></div>${matrix.categories.map((category) => `<div>${esc(short[category] || category)}</div>`).join("")}</div>`;
-  const rows = matrix.categories.map((first) => `<div class="collision-row"><div class="collision-label">${esc(short[first] || first)}</div>${matrix.categories.map((second) => {
+  const rows = matrix.categories.map((first, rowIndex) => `<div class="collision-row"><div class="collision-label">${esc(short[first] || first)}</div>${matrix.categories.map((second, columnIndex) => {
+    if (rowIndex > columnIndex) return `<div class="collision-cell mirrored" aria-hidden="true"></div>`;
     const cell = findCell(first, second);
     if (!cell || cell.n < state.collisionMinN) return `<div class="collision-cell empty">—<small>${cell?.n ? `n=${cell.n}` : "no records"}</small></div>`;
     const value = metricValue(cell);
@@ -569,7 +582,7 @@ function renderCollisionMatrix(matrix) {
   }).join("")}</div>`).join("");
   $("collisionMatrix").innerHTML = header + rows;
   const metricText = state.collisionMetric === "serious" ? "serious / very serious share" : state.collisionMetric === "casualties" ? "recorded injured/fatal people" : "unique collision occurrences";
-  $("collisionLegend").innerHTML = `<span><i></i>Cell colour = ${metricText}</span><span>Minimum sample filter applies to occurrence count</span><span>Click/tap any visible cell for full details</span>`;
+  $("collisionLegend").innerHTML = `<span><i></i>Cell colour = ${metricText}</span><span>Upper triangle only; do not sum cells</span><span>Minimum sample filter applies to occurrence count</span><span>Click/tap any visible cell for full details</span>`;
   $("collisionMatrix").querySelectorAll("button[data-first]").forEach((button) => button.addEventListener("click", () => {
     state.selectedCollisionPair = { first: button.dataset.first, second: button.dataset.second };
     renderCollisionMatrix(matrix);
@@ -646,6 +659,10 @@ function renderConsequences() {
   $("modelOutcomes").textContent = `${numberFormat.format(model.positive_outcomes)} · ${(100 * model.positive_rate).toFixed(1)}%`;
   $("modelAuc").textContent = model.validation.auc.toFixed(3);
   $("validationAuc").textContent = model.validation.auc.toFixed(3);
+  $("validationAveragePrecision").textContent = model.validation.average_precision.toFixed(3);
+  $("validationSensitivity").textContent = pct(model.validation.sensitivity);
+  $("validationPrecision").textContent = pct(model.validation.precision);
+  $("validationSpecificity").textContent = pct(model.validation.specificity);
   $("validationBrier").textContent = model.validation.brier.toFixed(4);
   $("validationTp").textContent = numberFormat.format(model.validation.confusion_matrix.true_positive);
   $("validationFn").textContent = numberFormat.format(model.validation.confusion_matrix.false_negative);
@@ -660,6 +677,10 @@ function renderConsequences() {
   $("personModelN").textContent = numberFormat.format(personModel.n);
   $("personModelOutcomes").textContent = `${numberFormat.format(personModel.positive_outcomes)} · ${(100 * personModel.positive_rate).toFixed(1)}%`;
   $("personModelAuc").textContent = personModel.validation.auc.toFixed(3);
+  $("personAveragePrecision").textContent = personModel.validation.average_precision.toFixed(3);
+  $("personSensitivity").textContent = pct(personModel.validation.sensitivity);
+  $("personPrecision").textContent = pct(personModel.validation.precision);
+  $("personSpecificity").textContent = pct(personModel.validation.specificity);
   renderForestPlot(personModel, "personForestPlot", .1, 16, {
     group: state.personFactorGroup,
     significantOnly: state.personSignificantOnly,
@@ -677,6 +698,10 @@ function renderConsequences() {
   $("damageModelN").textContent = numberFormat.format(damageModel.n);
   $("damageModelOutcomes").textContent = `${numberFormat.format(damageModel.positive_outcomes)} · ${(100 * damageModel.positive_rate).toFixed(1)}%`;
   $("damageModelAuc").textContent = damageModel.validation.auc.toFixed(3);
+  $("damageAveragePrecision").textContent = damageModel.validation.average_precision.toFixed(3);
+  $("damageSensitivity").textContent = pct(damageModel.validation.sensitivity);
+  $("damagePrecision").textContent = pct(damageModel.validation.precision);
+  $("damageSpecificity").textContent = pct(damageModel.validation.specificity);
   renderForestPlot(damageModel, "damageForestPlot", .1, 64, {
     group: state.damageFactorGroup,
     significantOnly: state.damageSignificantOnly,
@@ -693,6 +718,9 @@ function renderConsequences() {
 }
 
 function setupDeepAnalysisControls() {
+  document.querySelectorAll("[data-consequence-target]").forEach((button) => button.addEventListener("click", () => {
+    $(button.dataset.consequenceTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
   $("personFactorGroup").addEventListener("change", (event) => {
     state.personFactorGroup = event.target.value;
     state.selectedPersonEffect = null;
@@ -831,17 +859,6 @@ function setupTabs() {
   document.querySelectorAll("[data-tab-jump]").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tabJump)));
 }
 
-function syncOccurrenceYear(year) {
-  state.filters.yearStart = year;
-  state.filters.yearEnd = year;
-  $("yearStart").value = year;
-  $("yearEnd").value = year;
-  $("yearStartLabel").textContent = year;
-  $("yearEndLabel").textContent = year;
-  $("contextYear").value = String(year);
-  applyFilters();
-}
-
 function switchTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
@@ -851,9 +868,11 @@ function switchTab(tab) {
   setFilterMode(tab);
   if (tab === "overview") setTimeout(() => state.map?.invalidateSize(), 20);
   if (tab === "context") {
-    const alignedYear = Math.max(2020, Math.min(2024, state.filters.yearEnd));
-    state.contextYear = alignedYear;
-    syncOccurrenceYear(alignedYear);
+    if (state.filters.yearStart === state.filters.yearEnd && state.filters.yearEnd >= 2020 && state.filters.yearEnd <= 2024) {
+      state.contextYear = state.filters.yearEnd;
+    }
+    $("contextYear").value = String(state.contextYear);
+    renderContext();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -904,7 +923,7 @@ function setupBrief() {
 
 async function init() {
   try {
-    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json?v=11"), fetch("data/context.json?v=11")]);
+    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json?v=12"), fetch("data/context.json?v=12")]);
     if (!response.ok || !contextResponse.ok) throw new Error(`Data request failed: ${response.status}/${contextResponse.status}`);
     [state.data, state.contextData] = await Promise.all([response.json(), contextResponse.json()]);
     $("sourceLink").href = state.data.meta.source_url;
