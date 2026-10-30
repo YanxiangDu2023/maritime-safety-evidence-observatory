@@ -7,7 +7,7 @@
     <title>Maritime Safety Evidence Observatory</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/leaflet.css" />
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=7" />
   </head>
   <body>
     <div class="loading-screen" id="loadingScreen">
@@ -144,8 +144,15 @@
             <button data-tab-jump="quality">Read interpretation limits →</button>
           </div>
 
+          <div class="context-kpis" aria-label="External data coverage">
+            <article><span>VESSEL ACTIVITY</span><strong>2017–2024</strong><small>EMODnet annual AIS-density layers</small></article>
+            <article><span>TRAFFIC GRID</span><strong>1 km²</strong><small>Vessel hours per square kilometre</small></article>
+            <article><span>LEADING PORT · 2024</span><strong>London · 51.9m t</strong><small>DfT freight handled</small></article>
+            <article class="pending"><span>OCEAN CONDITIONS</span><strong>Not joined yet</strong><small>Hourly Copernicus matching is the next build</small></article>
+          </div>
+
           <div class="context-toolbar" aria-label="Context map controls">
-            <label><span>Map layer</span><select id="contextLayer"><option value="traffic">Vessel traffic density</option><option value="bathymetry">Water depth</option><option value="occurrences">Occurrences only</option></select></label>
+            <label><span>Map layer</span><select id="contextLayer"><option value="traffic" selected>Vessel traffic density</option><option value="bathymetry">Water depth</option></select></label>
             <label><span>Context year</span><select id="contextYear"><option>2020</option><option>2021</option><option>2022</option><option>2023</option><option selected>2024</option></select></label>
             <label><span>Vessel-density type</span><select id="contextVessel"><option value="all">All AIS vessel types</option><option value="01">Fishing</option><option value="08">Passenger</option><option value="09">Cargo</option><option value="10">Tanker</option></select></label>
             <label class="context-check"><input type="checkbox" id="contextOccurrences" checked /><span>Show occurrence sample</span></label>
@@ -153,7 +160,7 @@
 
           <div class="context-layout">
             <article class="panel context-map-panel">
-              <div class="panel-header"><div><span class="panel-kicker">Geographic context</span><h2 id="contextMapTitle">Vessel traffic density and reported occurrences</h2></div><span class="panel-note" id="contextMapNote">EMODnet · loading layer</span></div>
+              <div class="panel-header"><div><span class="panel-kicker">Geographic context</span><h2 id="contextMapTitle">Vessel traffic density and reported occurrences</h2></div><div class="context-map-status"><span class="panel-note" id="contextMapNote">EMODnet · loading layer</span><strong id="contextLayerStatus">Loading external layer…</strong></div></div>
               <div id="contextMap" aria-label="Interactive map comparing reported maritime occurrences with external context layers"></div>
               <div class="context-map-legend" id="contextLegend"></div>
             </article>
@@ -399,6 +406,6 @@
     </dialog>
 
     <script src="assets/leaflet.js"></script>
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
   </body>
 </html>

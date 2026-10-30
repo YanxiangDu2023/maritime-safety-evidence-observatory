@@ -312,6 +312,8 @@ function initializeContextMap() {
 
 function updateContextWms() {
   if (!state.contextMap) return;
+  $("contextLayerStatus").textContent = "Loading external layer…";
+  $("contextLayerStatus").className = "loading";
   if (state.contextWmsLayer) {
     state.contextMap.removeLayer(state.contextWmsLayer);
     state.contextWmsLayer = null;
@@ -327,7 +329,7 @@ function updateContextWms() {
       opacity: .78,
       attribution: "EMODnet Human Activities",
     }).addTo(state.contextMap);
-  } else if (state.contextLayer === "bathymetry") {
+  } else {
     state.contextWmsLayer = L.tileLayer.wms("https://ows.emodnet-bathymetry.eu/wms", {
       layers: "emodnet:mean",
       styles: "multicolour",
@@ -338,6 +340,14 @@ function updateContextWms() {
       attribution: "EMODnet Bathymetry",
     }).addTo(state.contextMap);
   }
+  state.contextWmsLayer.once("load", () => {
+    $("contextLayerStatus").textContent = "External layer loaded";
+    $("contextLayerStatus").className = "loaded";
+  });
+  state.contextWmsLayer.once("tileerror", () => {
+    $("contextLayerStatus").textContent = "External layer unavailable";
+    $("contextLayerStatus").className = "error";
+  });
 }
 
 function renderContextOccurrences() {
@@ -363,16 +373,14 @@ function renderPortContext() {
 
 function renderContext() {
   if (!state.data || !state.contextData) return;
-  const layerText = state.contextLayer === "traffic" ? `EMODnet ${state.contextYear} annual vessel-density average` : state.contextLayer === "bathymetry" ? "EMODnet mean seabed depth" : "MAIB occurrence locations only";
-  $("contextMapTitle").textContent = state.contextLayer === "traffic" ? "Vessel traffic density and reported occurrences" : state.contextLayer === "bathymetry" ? "Water depth and reported occurrences" : "Reported occurrence locations";
+  const layerText = state.contextLayer === "traffic" ? `EMODnet ${state.contextYear} annual vessel-density average` : "EMODnet mean seabed depth";
+  $("contextMapTitle").textContent = state.contextLayer === "traffic" ? "Vessel traffic density and reported occurrences" : "Water depth and reported occurrences";
   $("contextMapNote").textContent = layerText;
   $("contextVessel").disabled = state.contextLayer !== "traffic";
   $("trafficCaveat").hidden = state.contextYear !== 2024;
   $("contextLegend").innerHTML = state.contextLayer === "traffic"
     ? `<span><i class="context-swatch density"></i>Annual average vessel hours per km² per month</span><span><i class="context-dot occurrence"></i>Occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`
-    : state.contextLayer === "bathymetry"
-      ? `<span><i class="context-swatch depth"></i>Mean seabed depth</span><span><i class="context-dot occurrence"></i>Occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`
-      : `<span><i class="context-dot occurrence"></i>Occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`;
+    : `<span><i class="context-swatch depth"></i>Mean seabed depth</span><span><i class="context-dot occurrence"></i>Occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`;
   renderPortContext();
   if (state.tab === "context") {
     initializeContextMap();
@@ -383,6 +391,10 @@ function renderContext() {
 }
 
 function setupContextControls() {
+  $("contextLayer").value = state.contextLayer;
+  $("contextYear").value = String(state.contextYear);
+  $("contextVessel").value = state.contextVessel;
+  $("contextOccurrences").checked = true;
   $("contextLayer").addEventListener("change", (event) => { state.contextLayer = event.target.value; renderContext(); });
   $("contextYear").addEventListener("change", (event) => { state.contextYear = Number(event.target.value); renderContext(); });
   $("contextVessel").addEventListener("change", (event) => { state.contextVessel = event.target.value; renderContext(); });
@@ -715,7 +727,7 @@ function setupBrief() {
 
 async function init() {
   try {
-    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json"), fetch("data/context.json?v=6")]);
+    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json"), fetch("data/context.json?v=7")]);
     if (!response.ok || !contextResponse.ok) throw new Error(`Data request failed: ${response.status}/${contextResponse.status}`);
     [state.data, state.contextData] = await Promise.all([response.json(), contextResponse.json()]);
     $("sourceLink").href = state.data.meta.source_url;
