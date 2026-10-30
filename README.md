@@ -7,7 +7,8 @@ An interactive portfolio prototype that turns public UK Marine Accident Investig
 - relational integration of occurrence, vessel and affected-person records;
 - automatic completeness and relationship-integrity checks;
 - interactive temporal, geographic and categorical analysis;
-- an interactive 2D/3D hexagonal spatial atlas with filter-aware aggregation, selectable height metrics and severity-share colour encoding;
+- a filter-aware geographic context view combining MAIB occurrence locations with EMODnet vessel-density and bathymetry WMS layers;
+- an official DfT port-freight comparison for the overlapping 2020–2024 period;
 - a multivariable logistic model of serious/very serious classification with adjusted odds ratios and 95% confidence intervals;
 - person-level event-to-outcome flows and vessel-level damage profiles by age and gross tonnage;
 - explicit separation of reported occurrence counts from exposure-adjusted risk;
@@ -40,6 +41,14 @@ Then run:
 python3 scripts/build_data.py
 ```
 
+Refresh the official DfT port-freight context and rebuild its browser summary:
+
+```bash
+python3 scripts/refresh_context_data.py
+```
+
+EMODnet vessel-density and bathymetry layers are requested through their official WMS endpoints at display time; they are not copied into this repository.
+
 Validate the analytical artifact before publication:
 
 ```bash
@@ -65,8 +74,7 @@ See [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for metric definitions, model v
 
 ## Roadmap
 
-- temporally compatible EMODnet vessel-density exposure grids;
-- Copernicus wave/current reanalysis and bathymetry context layers;
+- point-in-time Copernicus wave/current matching for individual occurrences;
 - port-arrival denominators for port-area comparisons;
 - page-level extraction from published investigation reports;
 - citation validation and retrieval evaluation;

@@ -51,5 +51,18 @@ class BuiltArtifactTests(unittest.TestCase):
         self.assertGreater(model["validation"]["auc"], 0.5)
 
 
+class ContextArtifactTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.payload = json.loads((ROOT / "dist" / "data" / "context.json").read_text())
+
+    def test_port_context_has_overlap_years(self):
+        self.assertEqual(set(self.payload["ports"]["by_year"]), {"2020", "2021", "2022", "2023", "2024"})
+
+    def test_port_values_are_converted_to_tonnes(self):
+        london_2024 = next(row for row in self.payload["ports"]["by_year"]["2024"] if row["port"] == "London")
+        self.assertGreater(london_2024["tonnes"], 50_000_000)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -22,11 +22,13 @@ The multivariable logistic regression reports adjusted odds ratios and Wald 95% 
 
 The model is conditional on an occurrence entering the MAIB dataset. It does not estimate accident probability, population risk, or causal effects.
 
-## Spatial atlas
+## External geographic context
 
-The spatial atlas aggregates records with valid coordinates into approximate latitude/longitude grid cells at three user-selectable resolutions. Column height uses a square-root scale for reported occurrences, serious occurrences or affected-person counts. Cell colour represents the observed serious/very serious share.
+The context map displays MAIB occurrence locations over official EMODnet Web Map Service layers. Vessel density is an annual average of AIS-derived vessel hours per square kilometre per month. The interface uses the overlapping 2020–2024 period and preserves EMODnet vessel-type categories. The 2024 layer carries the provider's warning about reduced satellite coverage from June. Bathymetry is displayed as mean seabed depth from the current EMODnet source grid.
 
-The atlas is a map of published-record concentration, not an exposure-adjusted risk surface. Grid-cell boundaries are analytical approximations rather than navigational or administrative boundaries. Future traffic-density, ocean-condition and port-activity layers should only be joined where their time period, geography and vessel classification are compatible with the occurrence records.
+Port comparisons use the Department for Transport PORT0499 dataset. Source values are reported in thousands of tonnes and are converted to tonnes before the browser-ready summary is generated. Freight tonnage is operational context and is not treated as a direct denominator for every occurrence type.
+
+These layers remain contextual rather than a calculated risk surface. A valid exposure-adjusted rate requires compatible geography, time period and vessel classification. Copernicus wave reanalysis is documented as a point-in-time enrichment source; it should be matched to each occurrence's coordinates and timestamp before entering descriptive or regression analysis.
 
 ## Vessel profiles
 

@@ -81,7 +81,7 @@
 
         <nav class="tab-nav" aria-label="Dashboard sections">
           <button class="tab active" data-tab="overview">01&nbsp;&nbsp;Overview</button>
-          <button class="tab" data-tab="spatial">02&nbsp;&nbsp;3D spatial atlas</button>
+          <button class="tab" data-tab="context">02&nbsp;&nbsp;Exposure &amp; environment</button>
           <button class="tab" data-tab="patterns">03&nbsp;&nbsp;Pattern explorer</button>
           <button class="tab" data-tab="consequences">04&nbsp;&nbsp;Severity &amp; consequences</button>
           <button class="tab" data-tab="evidence">05&nbsp;&nbsp;Evidence explorer</button>
@@ -132,53 +132,60 @@
           </div>
         </section>
 
-        <section class="tab-panel" id="spatialPanel">
-          <div class="section-intro spatial-intro">
-            <div><span class="eyebrow">Geographic composition · experimental view</span><h2>3D maritime occurrence landscape</h2></div>
-            <p>Hexagonal columns aggregate reported occurrence coordinates. Height represents the selected metric; colour represents the share classified serious or very serious.</p>
+        <section class="tab-panel" id="contextPanel">
+          <div class="section-intro context-intro">
+            <div><span class="eyebrow">External context data</span><h2>Exposure and operating environment</h2></div>
+            <p>Compare reported occurrence locations with vessel activity, water depth and port throughput. Each source keeps its own time period and unit.</p>
           </div>
 
-          <div class="method-banner spatial-boundary">
+          <div class="method-banner context-boundary">
             <span class="method-icon">i</span>
-            <div><strong>This is not a risk surface.</strong> The map currently has no vessel-traffic denominator. High columns identify concentrations in the published MAIB records, not the most dangerous waters.</div>
+            <div><strong>Context before rates.</strong> These layers help assess exposure and operating conditions. They are not combined into an accident rate until vessel type, geography and time coverage are aligned.</div>
             <button data-tab-jump="quality">Read interpretation limits →</button>
           </div>
 
-          <div class="atlas-toolbar" aria-label="Spatial atlas controls">
-            <label><span>Column height</span><select id="atlasMetric"><option value="occurrences">Reported occurrences</option><option value="serious">Serious occurrences</option><option value="people">Affected people</option></select></label>
-            <label><span>Aggregation</span><select id="atlasResolution"><option value="coarse">Regional · 55 km approx.</option><option value="medium" selected>Local · 30 km approx.</option><option value="fine">Detailed · 18 km approx.</option></select></label>
-            <div class="view-toggle" role="group" aria-label="Map dimension"><button id="atlas2d">2D</button><button id="atlas3d" class="active">3D</button></div>
-            <button class="secondary-button" id="atlasReset">Reset map</button>
+          <div class="context-toolbar" aria-label="Context map controls">
+            <label><span>Map layer</span><select id="contextLayer"><option value="traffic">Vessel traffic density</option><option value="bathymetry">Water depth</option><option value="occurrences">Occurrences only</option></select></label>
+            <label><span>Context year</span><select id="contextYear"><option>2020</option><option>2021</option><option>2022</option><option>2023</option><option selected>2024</option></select></label>
+            <label><span>Vessel-density type</span><select id="contextVessel"><option value="all">All AIS vessel types</option><option value="01">Fishing</option><option value="08">Passenger</option><option value="09">Cargo</option><option value="10">Tanker</option></select></label>
+            <label class="context-check"><input type="checkbox" id="contextOccurrences" checked /><span>Show occurrence sample</span></label>
           </div>
 
-          <div class="atlas-layout">
-            <article class="panel atlas-map-panel">
-              <div class="panel-header"><div><span class="panel-kicker">Interactive spatial aggregation</span><h2>Reported occurrence concentration</h2></div><span class="panel-note" id="atlasMapNote">Preparing coordinates…</span></div>
-              <div id="atlasMap" aria-label="Interactive three-dimensional hexagonal map of reported maritime occurrences"><canvas id="atlasCanvas"></canvas><div class="atlas-tooltip" id="atlasTooltip" hidden></div></div>
-              <div class="atlas-legend"><span>Lower serious share</span><i></i><span>Higher serious share</span><small>Column height uses a square-root scale so dense cells do not obscure neighbouring areas.</small></div>
+          <div class="context-layout">
+            <article class="panel context-map-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Geographic context</span><h2 id="contextMapTitle">Vessel traffic density and reported occurrences</h2></div><span class="panel-note" id="contextMapNote">EMODnet · loading layer</span></div>
+              <div id="contextMap" aria-label="Interactive map comparing reported maritime occurrences with external context layers"></div>
+              <div class="context-map-legend" id="contextLegend"></div>
             </article>
 
-            <aside class="atlas-side">
-              <article class="panel atlas-summary">
-                <span class="panel-kicker">Visible spatial sample</span>
-                <div><strong id="atlasCoordinateCount">—</strong><span>located records</span></div>
-                <div><strong id="atlasCellCount">—</strong><span>occupied cells</span></div>
-                <div><strong id="atlasSeriousShare">—</strong><span>serious share</span></div>
+            <aside class="context-side">
+              <article class="panel context-source-card">
+                <span class="panel-kicker">Vessel activity</span><h2>EMODnet AIS density</h2>
+                <strong>1 × 1 km cells</strong><p>Hours per square kilometre per month, with annual averages by vessel type. Available for 2017–2024.</p>
+                <small id="trafficCaveat">2024 has reduced satellite coverage from June and should be compared cautiously.</small>
+                <a href="https://emodnet.ec.europa.eu/en/human-activities-1" target="_blank" rel="noreferrer">Official source ↗</a>
               </article>
-              <article class="panel atlas-ranking">
-                <div class="panel-header"><div><span class="panel-kicker">Highest columns</span><h2>Leading map cells</h2></div></div>
-                <div id="atlasTopCells"></div>
-              </article>
-              <article class="panel context-layers">
-                <span class="panel-kicker">Exposure roadmap</span>
-                <h2>Context layers</h2>
-                <p><strong>Current:</strong> MAIB occurrence coordinates.</p>
-                <p><span>Next</span> EMODnet vessel-density grids</p>
-                <p><span>Next</span> Copernicus wave and current reanalysis</p>
-                <p><span>Next</span> Bathymetry and port-activity denominators</p>
-                <small>External layers will only be combined where geography, vessel type and time coverage are compatible.</small>
+              <article class="panel context-source-card">
+                <span class="panel-kicker">Seabed context</span><h2>EMODnet bathymetry</h2>
+                <strong>About 125 m source grid</strong><p>Mean seabed depth provides context for grounding, stranding and near-shore occurrence patterns.</p>
+                <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noreferrer">Official source ↗</a>
               </article>
             </aside>
+          </div>
+
+          <div class="context-analysis-grid">
+            <article class="panel port-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Port activity</span><h2 id="portChartTitle">Leading UK ports by freight handled, 2024</h2></div><span class="panel-note">DfT PORT0499 · million tonnes</span></div>
+              <div class="chart-wrap svg-chart" id="portChart"></div>
+              <p class="chart-footnote">Freight tonnage is operational context, not a direct denominator for every occurrence type. Port-level vessel arrivals are preferable where available. <a href="https://www.gov.uk/government/statistical-data-sets/port-and-domestic-waterborne-freight-statistics-port" target="_blank" rel="noreferrer">Official DfT table ↗</a></p>
+            </article>
+            <article class="panel ocean-panel">
+              <span class="panel-kicker">Ocean conditions</span><h2>Accident-time wave matching</h2>
+              <div class="ocean-spec"><div><strong>Hourly</strong><span>temporal resolution</span></div><div><strong>≈1.5 km</strong><span>wave grid</span></div><div><strong>1980–2026</strong><span>available period</span></div></div>
+              <p>Copernicus wave reanalysis can attach significant wave height, period and direction to each occurrence using its time and coordinates.</p>
+              <div class="integration-status"><strong>Next analytical join</strong><span>Not displayed as a generic map layer. It should be matched at occurrence time before entering the severity model.</span></div>
+              <a href="https://data.marine.copernicus.eu/product/NWSHELF_REANALYSIS_WAV_004_015/services" target="_blank" rel="noreferrer">Copernicus product page ↗</a>
+            </article>
           </div>
         </section>
 
