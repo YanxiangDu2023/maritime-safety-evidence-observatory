@@ -14,6 +14,17 @@ Multi-vessel occurrences are retained in vessel-level analyses. They may appear 
 - **Deaths / presumed deaths:** `Physical_Condition_L1` is `Death (confirmed)` or `Missing (death presumed)`.
 - Vessel-level totals are used only for an occurrence with no affected-person rows. This avoids double counting.
 
+### Person injury-severity model
+
+The person-level binary outcome combines `Physical_Condition_L2 = Serious injury`,
+confirmed deaths and persons recorded as missing with death presumed. Minor injury
+and no injury form the reference outcome. Predictors include age, gender, person
+type, duty status, vessel category and occurrence event. Missing age, gender and
+duty status are represented explicitly. Wald intervals use an occurrence-clustered
+sandwich covariance matrix because multiple people may belong to one occurrence.
+Five-fold validation is grouped by `Occurrence_Id`, so one occurrence cannot
+appear in both the training and test portions of a fold.
+
 ## Severity model
 
 The binary outcome is `Occurrence_Severity` classified as `Serious` or `Very Serious`; the reference outcome combines `Marine incident` and `Less serious`.
@@ -35,6 +46,25 @@ These layers remain contextual rather than a calculated risk surface. A valid ex
 - Vessel age is calculated as occurrence year minus year built.
 - Zero or unusable tonnage is shown as `Unknown / zero` rather than treated as a measured zero.
 - Damage shares are conditional on vessels represented in reported occurrences.
+
+### Collision pairing matrix
+
+The collision matrix is limited to occurrences whose main event is `Collision`
+and which contain at least two linked vessel records. A cell counts unique
+occurrences containing the displayed vessel-category pairing. Pairings are
+deduplicated within an occurrence; an occurrence involving more than two vessels
+may still contribute to more than one distinct pairing. Serious shares use Wilson
+95% intervals.
+
+### Vessel damage model
+
+The vessel-level outcome is material damage or vessel loss; no damage and minor
+damage form the reference. Vessel age and log10 gross tonnage are continuous,
+with explicit unknown indicators. Vessel category, event type, multi-vessel status
+and calendar year are adjusted simultaneously. Standard errors and five-fold
+validation are grouped by `Occurrence_Id` to account for multiple vessels linked
+to the same occurrence. The model is conditional on a vessel appearing in the
+published occurrence data and is not a fleet-wide damage probability.
 
 ## Partial year
 

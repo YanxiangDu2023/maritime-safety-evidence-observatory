@@ -11,6 +11,8 @@ An interactive portfolio prototype that turns public UK Marine Accident Investig
 - an official DfT port-freight comparison for the overlapping 2020–2024 period;
 - a multivariable logistic model of serious/very serious classification with adjusted odds ratios and 95% confidence intervals;
 - person-level event-to-outcome flows and vessel-level damage profiles by age and gross tonnage;
+- occurrence-clustered person injury-severity and vessel material-damage models;
+- a collision pairing matrix retaining the vessel combinations within multi-vessel occurrences;
 - explicit separation of reported occurrence counts from exposure-adjusted risk;
 - source-linked investigation evidence;
 - an automatically assembled, print-ready evidence brief.

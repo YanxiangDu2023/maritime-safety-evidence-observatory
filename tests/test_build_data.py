@@ -67,6 +67,20 @@ class BuiltArtifactTests(unittest.TestCase):
         self.assertEqual(model["validation"]["folds"], 5)
         self.assertGreater(model["validation"]["auc"], 0.5)
 
+    def test_deep_models_and_collision_pairs(self):
+        analysis = self.payload["analysis"]
+        person_model = analysis["person_severity_model"]
+        damage_model = analysis["vessel_damage_model"]
+        self.assertTrue(person_model["converged"])
+        self.assertEqual(person_model["n"], 3040)
+        self.assertGreater(person_model["validation"]["auc"], 0.7)
+        self.assertEqual(person_model["standard_errors"], "Occurrence-clustered sandwich")
+        self.assertTrue(damage_model["converged"])
+        self.assertEqual(damage_model["n"], 9830)
+        self.assertGreater(damage_model["validation"]["auc"], 0.7)
+        self.assertEqual(damage_model["standard_errors"], "Occurrence-clustered sandwich")
+        self.assertGreaterEqual(analysis["collision_pairs"]["collision_occurrences"], 500)
+
 
 class ContextArtifactTests(unittest.TestCase):
     @classmethod

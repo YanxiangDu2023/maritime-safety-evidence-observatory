@@ -155,14 +155,31 @@ def calibration_bins(predictions: list[float], outcomes: list[int], bin_count: i
     return bins
 
 
-def cross_validate_logistic(design: list[list[float]], outcomes: list[int], folds: int = 5) -> dict:
+def cross_validate_logistic(
+    design: list[list[float]],
+    outcomes: list[int],
+    folds: int = 5,
+    groups: list[str] | None = None,
+) -> dict:
     """Deterministic stratified cross-validation for honest predictive diagnostics."""
     fold_ids = [0] * len(outcomes)
-    positive_indices = [index for index, outcome in enumerate(outcomes) if outcome]
-    negative_indices = [index for index, outcome in enumerate(outcomes) if not outcome]
-    for indices in (positive_indices, negative_indices):
-        for position, index in enumerate(indices):
-            fold_ids[index] = position % folds
+    if groups is None:
+        positive_indices = [index for index, outcome in enumerate(outcomes) if outcome]
+        negative_indices = [index for index, outcome in enumerate(outcomes) if not outcome]
+        for indices in (positive_indices, negative_indices):
+            for position, index in enumerate(indices):
+                fold_ids[index] = position % folds
+    else:
+        group_indices: dict[str, list[int]] = defaultdict(list)
+        for index, group in enumerate(groups):
+            group_indices[group].append(index)
+        positive_groups = [group for group, indices in group_indices.items() if any(outcomes[index] for index in indices)]
+        negative_groups = [group for group, indices in group_indices.items() if not any(outcomes[index] for index in indices)]
+        group_fold = {}
+        for group_list in (sorted(positive_groups), sorted(negative_groups)):
+            for position, group in enumerate(group_list):
+                group_fold[group] = position % folds
+        fold_ids = [group_fold[group] for group in groups]
 
     predictions = [0.0] * len(outcomes)
     for fold in range(folds):
@@ -197,13 +214,57 @@ def cross_validate_logistic(design: list[list[float]], outcomes: list[int], fold
     }
 
 
-def logistic_regression(design: list[list[float]], outcomes: list[int], labels: list[str]) -> dict:
+def clustered_covariance(
+    design: list[list[float]],
+    outcomes: list[int],
+    predictions: list[float],
+    bread: list[list[float]],
+    groups: list[str],
+) -> list[list[float]]:
+    """Cluster-robust sandwich covariance using occurrence-level score sums."""
+    feature_count = len(design[0])
+    scores: dict[str, list[float]] = defaultdict(lambda: [0.0] * feature_count)
+    for row, outcome, prediction, group in zip(design, outcomes, predictions, groups):
+        residual = outcome - prediction
+        for index, value in enumerate(row):
+            scores[group][index] += value * residual
+
+    meat = [[0.0] * feature_count for _ in range(feature_count)]
+    for score in scores.values():
+        for left in range(feature_count):
+            for right in range(feature_count):
+                meat[left][right] += score[left] * score[right]
+
+    left_product = [
+        [sum(bread[row][k] * meat[k][column] for k in range(feature_count)) for column in range(feature_count)]
+        for row in range(feature_count)
+    ]
+    covariance = [
+        [sum(left_product[row][k] * bread[k][column] for k in range(feature_count)) for column in range(feature_count)]
+        for row in range(feature_count)
+    ]
+    cluster_count = len(scores)
+    sample_count = len(outcomes)
+    correction = 1.0
+    if cluster_count > 1 and sample_count > feature_count:
+        correction = (cluster_count / (cluster_count - 1)) * ((sample_count - 1) / (sample_count - feature_count))
+    return [[value * correction for value in row] for row in covariance]
+
+
+def logistic_regression(
+    design: list[list[float]],
+    outcomes: list[int],
+    labels: list[str],
+    groups: list[str] | None = None,
+) -> dict:
     """Fit a logistic model and return adjusted effects plus validation diagnostics."""
     coefficients, inverse_information, converged = fit_logistic(design, outcomes)
 
+    predictions = predict_logistic(design, coefficients)
+    covariance = clustered_covariance(design, outcomes, predictions, inverse_information, groups) if groups else inverse_information
     effects = []
     for index, label in enumerate(labels, start=1):
-        standard_error = math.sqrt(max(inverse_information[index][index], 0.0))
+        standard_error = math.sqrt(max(covariance[index][index], 0.0))
         coefficient = coefficients[index]
         effects.append(
             {
@@ -214,7 +275,6 @@ def logistic_regression(design: list[list[float]], outcomes: list[int], labels: 
             }
         )
 
-    predictions = predict_logistic(design, coefficients)
     positives = sum(outcomes)
 
     return {
@@ -222,8 +282,10 @@ def logistic_regression(design: list[list[float]], outcomes: list[int], labels: 
         "positive_outcomes": positives,
         "positive_rate": round(positives / len(outcomes), 4),
         "in_sample_auc": round(roc_auc(predictions, outcomes), 3),
-        "validation": cross_validate_logistic(design, outcomes),
+        "validation": cross_validate_logistic(design, outcomes, groups=groups),
         "converged": converged,
+        "cluster_count": len(set(groups)) if groups else None,
+        "standard_errors": "Occurrence-clustered sandwich" if groups else "Model-based Wald",
         "effects": effects,
     }
 
@@ -302,6 +364,204 @@ def severity_model(occurrences: list[dict[str, str]], vessel_by_occurrence: dict
     result["outcome_definition"] = "Occurrence_Severity is Serious or Very serious"
     result["reference_outcome"] = "Marine incident or Less serious"
     return result
+
+
+def person_severity_model(persons: list[dict[str, str]]) -> dict:
+    specifications = [
+        {"label": "Age (per 10 years)", "definition": "Recorded age divided by 10; unknown ages set to the sample reference", "reference": "Ten years younger"},
+        {"label": "Age unknown", "definition": "Age is unavailable or implausible", "reference": "Age recorded"},
+        {"label": "Female", "definition": "Gender = Female", "reference": "Male"},
+        {"label": "Gender unknown", "definition": "Gender is unknown or unavailable", "reference": "Male"},
+        {"label": "Passenger", "definition": "Affected person type = Passenger", "reference": "Crew"},
+        {"label": "Other person", "definition": "Affected person type = Other", "reference": "Crew"},
+        {"label": "On duty", "definition": "On duty immediately before the casualty", "reference": "Known not on duty"},
+        {"label": "Duty status unknown", "definition": "Duty status is blank, unknown or unavailable", "reference": "Known not on duty"},
+        {"label": "Fishing vessel", "definition": "Vessel category = Fishing vessel", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Recreational vessel", "definition": "Vessel category = Recreational", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Small commercial vessel", "definition": "Small commercial vessel under 100 GT", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Accident to person(s)", "definition": "Main event is accident to person(s)", "reference": "Other event types"},
+        {"label": "Capsizing / listing", "definition": "Main event is capsizing/listing", "reference": "Other event types"},
+        {"label": "Collision / contact", "definition": "Main event is collision or contact", "reference": "Other event types"},
+        {"label": "Fire / explosion", "definition": "Main event is fire/explosion", "reference": "Other event types"},
+    ]
+    design: list[list[float]] = []
+    outcomes: list[int] = []
+    groups: list[str] = []
+    known_ages = [number(row.get("Age")) for row in persons]
+    known_ages = [age for age in known_ages if age is not None and 0 < age <= 110]
+    reference_age = sum(known_ages) / len(known_ages) if known_ages else 40.0
+
+    for person in persons:
+        age = number(person.get("Age"))
+        age_unknown = age is None or age <= 0 or age > 110
+        age_value = reference_age if age_unknown else age
+        gender = clean(person.get("Gender")).lower()
+        person_type = clean(person.get("Affected_Person_Type")).lower()
+        duty = clean(person.get("On_Duty")).lower()
+        category = clean(person.get("Vessel_Category_L1")).lower()
+        event = clean(person.get("Main_Event_L1")).lower()
+        condition_l1 = clean(person.get("Physical_Condition_L1")).lower()
+        condition_l2 = clean(person.get("Physical_Condition_L2")).lower()
+        duty_unknown = not duty or "unknown" in duty or "not available" in duty
+        features = [
+            (age_value - reference_age) / 10,
+            age_unknown,
+            gender == "female",
+            not gender or "unknown" in gender or "not available" in gender,
+            person_type == "passenger",
+            person_type == "other",
+            duty.startswith("yes"),
+            duty_unknown,
+            category == "fishing vessel",
+            category == "recreational (non commercial)",
+            category.startswith("small commercial"),
+            event == "accident to person(s)",
+            event == "capsizing / listing",
+            event in {"collision", "contact"},
+            event == "fire / explosion",
+        ]
+        design.append([1.0] + [float(value) for value in features])
+        outcomes.append(int(condition_l2 == "serious injury" or condition_l1 in {"death (confirmed)", "missing (death presumed)"}))
+        groups.append(clean(person.get("Occurrence_Id")))
+
+    result = logistic_regression(design, outcomes, [item["label"] for item in specifications], groups=groups)
+    result["specifications"] = specifications
+    result["outcome_definition"] = "Serious injury, confirmed death, or missing (death presumed)"
+    result["reference_outcome"] = "Minor injury or no injury"
+    result["unit"] = "Affected-person record"
+    return result
+
+
+def vessel_damage_model(vessels: list[dict[str, str]]) -> dict:
+    specifications = [
+        {"label": "Vessel age (per 10 years)", "definition": "Occurrence year minus year built", "reference": "Ten years younger"},
+        {"label": "Vessel age unknown", "definition": "Year built unavailable or implausible", "reference": "Age recorded"},
+        {"label": "Gross tonnage (10×)", "definition": "One-unit increase in log10 gross tonnage", "reference": "Tenfold lower gross tonnage"},
+        {"label": "Gross tonnage unknown", "definition": "Gross tonnage is zero or unavailable", "reference": "Gross tonnage recorded"},
+        {"label": "Fishing vessel", "definition": "Vessel category = Fishing vessel", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Recreational vessel", "definition": "Vessel category = Recreational", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Small commercial vessel", "definition": "Small commercial vessel under 100 GT", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Other vessel category", "definition": "Other/assorted vessel category", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Collision / contact", "definition": "Main event is collision or contact", "reference": "Other event types"},
+        {"label": "Grounding / stranding", "definition": "Main event is grounding/stranding", "reference": "Other event types"},
+        {"label": "Fire / explosion", "definition": "Main event is fire/explosion", "reference": "Other event types"},
+        {"label": "Flooding / foundering", "definition": "Main event is flooding/foundering", "reference": "Other event types"},
+        {"label": "Loss of control", "definition": "Main event is loss of control", "reference": "Other event types"},
+        {"label": "Multiple vessels involved", "definition": "Occurrence contains more than one vessel record", "reference": "Single-vessel occurrence"},
+        {"label": "Calendar year", "definition": "One-year increase in reported year", "reference": "Previous calendar year"},
+    ]
+    occurrence_counts = Counter(clean(row.get("Occurrence_Id")) for row in vessels)
+    known_ages = []
+    known_logs = []
+    for vessel in vessels:
+        year = integer(vessel.get("Year_Reported"))
+        built = integer(vessel.get("Year_Built"))
+        if 1850 <= built <= year:
+            known_ages.append(year - built)
+        tonnage = number(vessel.get("GT_Gross_Tonnage")) or 0
+        if tonnage > 0:
+            known_logs.append(math.log10(tonnage))
+    reference_age = sum(known_ages) / len(known_ages) if known_ages else 20.0
+    reference_log = sum(known_logs) / len(known_logs) if known_logs else 3.0
+
+    design: list[list[float]] = []
+    outcomes: list[int] = []
+    groups: list[str] = []
+    for vessel in vessels:
+        occurrence_id = clean(vessel.get("Occurrence_Id"))
+        year = integer(vessel.get("Year_Reported")) or 2020
+        built = integer(vessel.get("Year_Built"))
+        age_unknown = not (1850 <= built <= year)
+        age = reference_age if age_unknown else year - built
+        tonnage = number(vessel.get("GT_Gross_Tonnage")) or 0
+        tonnage_unknown = tonnage <= 0
+        log_tonnage = reference_log if tonnage_unknown else math.log10(tonnage)
+        category = clean(vessel.get("Vessel_Category_L1")).lower()
+        event = clean(vessel.get("Main_Event_L1")).lower()
+        damage = clean(vessel.get("Loss_Of_Vessel_Damage")).lower()
+        features = [
+            (age - reference_age) / 10,
+            age_unknown,
+            log_tonnage - reference_log,
+            tonnage_unknown,
+            category == "fishing vessel",
+            category == "recreational (non commercial)",
+            category.startswith("small commercial"),
+            category == "other - assorted",
+            event in {"collision", "contact"},
+            event == "grounding / stranding",
+            event == "fire / explosion",
+            event == "flooding / foundering",
+            event == "loss of control",
+            occurrence_counts[occurrence_id] > 1,
+            year - 2020,
+        ]
+        design.append([1.0] + [float(value) for value in features])
+        outcomes.append(int(damage.startswith("material damage") or damage.startswith("loss of ship")))
+        groups.append(occurrence_id)
+
+    result = logistic_regression(design, outcomes, [item["label"] for item in specifications], groups=groups)
+    result["specifications"] = specifications
+    result["outcome_definition"] = "Material damage or loss of ship"
+    result["reference_outcome"] = "No damage or minor damage"
+    result["unit"] = "Vessel record"
+    return result
+
+
+def collision_pair_matrix(
+    occurrences: list[dict[str, str]],
+    vessels: list[dict[str, str]],
+    persons: list[dict[str, str]],
+) -> dict:
+    occurrence_lookup = {clean(row.get("Occurrence_Id")): row for row in occurrences}
+    vessels_by_occurrence: dict[str, list[dict[str, str]]] = defaultdict(list)
+    people_by_occurrence: Counter = Counter()
+    for vessel in vessels:
+        vessels_by_occurrence[clean(vessel.get("Occurrence_Id"))].append(vessel)
+    for person in persons:
+        if is_injured_person(person) or is_fatal_person(person):
+            people_by_occurrence[clean(person.get("Occurrence_Id"))] += 1
+
+    categories = [
+        "Merchant Vessel >= 100gt",
+        "Fishing Vessel",
+        "Small Commercial (under 100gt, excl. FVs)",
+        "Recreational (non Commercial)",
+        "Other - Assorted",
+    ]
+    pair_occurrences: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for occurrence_id, rows in vessels_by_occurrence.items():
+        occurrence = occurrence_lookup.get(occurrence_id)
+        if not occurrence or clean(occurrence.get("Main_Event_L1")).lower() != "collision" or len(rows) < 2:
+            continue
+        row_categories = [clean(row.get("Vessel_Category_L1")) or "Other - Assorted" for row in rows]
+        pairs = set()
+        for left in range(len(row_categories)):
+            for right in range(left + 1, len(row_categories)):
+                first, second = sorted((row_categories[left], row_categories[right]), key=lambda value: categories.index(value) if value in categories else 99)
+                pairs.add((first, second))
+        for pair in pairs:
+            pair_occurrences[pair].add(occurrence_id)
+
+    cells = []
+    for first_index, first in enumerate(categories):
+        for second in categories[first_index:]:
+            ids = pair_occurrences.get((first, second), set())
+            serious_count = sum(normalise_severity(clean(occurrence_lookup[item].get("Occurrence_Severity"))) in {"Serious", "Very serious"} for item in ids)
+            casualties = sum(people_by_occurrence[item] for item in ids)
+            low, high = wilson_interval(serious_count, len(ids))
+            cells.append({
+                "first": first,
+                "second": second,
+                "n": len(ids),
+                "serious": serious_count,
+                "serious_share": round(serious_count / len(ids), 4) if ids else 0,
+                "ci_low": round(low, 4),
+                "ci_high": round(high, 4),
+                "casualties": casualties,
+            })
+    total_occurrences = len({item for ids in pair_occurrences.values() for item in ids})
+    return {"categories": categories, "cells": cells, "collision_occurrences": total_occurrences}
 
 
 def consequence_analysis(
@@ -433,10 +693,16 @@ def consequence_analysis(
     return {
         "severity_matrix": {"categories": top_categories, "events": top_events, "cells": severity_cells},
         "severity_model": severity_model(occurrences, vessel_by_occurrence),
+        "person_severity_model": person_severity_model(persons),
+        "collision_pairs": collision_pair_matrix(occurrences, vessels, persons),
+        "vessel_damage_model": vessel_damage_model(vessels),
         "person_flow": person_flow,
         "vessel_profile": vessel_profile,
         "notes": {
             "model": "Multivariable logistic regression of serious/very serious classification among reported occurrences. Odds ratios are adjusted for all displayed factors.",
+            "person_model": "Person-level logistic regression of serious injury or death with occurrence-clustered standard errors and grouped cross-validation.",
+            "collision": "Collision cells count unique occurrences containing each vessel-category pairing; an occurrence with more than two vessels can contribute to multiple pair cells.",
+            "damage_model": "Vessel-level logistic regression of material damage or vessel loss with occurrence-clustered standard errors and grouped cross-validation.",
             "person": "Person-level flows describe affected-person records and do not measure population risk.",
             "vessel": "Damage shares are conditional on vessels appearing in the published occurrence records.",
         },

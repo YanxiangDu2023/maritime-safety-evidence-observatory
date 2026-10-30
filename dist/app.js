@@ -456,17 +456,17 @@ function renderSeverityMatrix(matrix) {
   $("severityMatrix").innerHTML = header + rows;
 }
 
-function renderForestPlot(model) {
-  const min = Math.log(.25), max = Math.log(16);
-  const position = (value) => 100 * (Math.log(Math.max(.25, Math.min(16, value))) - min) / (max - min);
-  $("forestPlot").innerHTML = model.effects.map((effect) => {
+function renderForestPlot(model, targetId = "forestPlot", lowerLimit = .25, upperLimit = 16) {
+  const min = Math.log(lowerLimit), max = Math.log(upperLimit);
+  const position = (value) => 100 * (Math.log(Math.max(lowerLimit, Math.min(upperLimit, value))) - min) / (max - min);
+  $(targetId).innerHTML = model.effects.map((effect) => {
     const left = position(effect.ci_low);
     const right = position(effect.ci_high);
     const point = position(effect.odds_ratio);
     const significant = effect.ci_low > 1 || effect.ci_high < 1;
     return `<div class="forest-row">
       <span class="forest-label">${esc(effect.label)}</span>
-      <div class="forest-scale"><i class="forest-reference"></i><span class="forest-ci ${significant ? "significant" : ""}" style="left:${left}%;width:${Math.max(1, right - left)}%"></span><b style="left:${point}%"></b></div>
+      <div class="forest-scale"><i class="forest-reference" style="left:${position(1)}%"></i><span class="forest-ci ${significant ? "significant" : ""}" style="left:${left}%;width:${Math.max(1, right - left)}%"></span><b style="left:${point}%"></b></div>
       <span class="forest-value">${effect.odds_ratio.toFixed(2)} <small>${effect.ci_low.toFixed(2)}–${effect.ci_high.toFixed(2)}</small></span>
     </div>`;
   }).join("");
@@ -488,6 +488,32 @@ function renderCalibration(validation) {
 function renderModelSpecification(model) {
   $("modelOutcomeDefinition").textContent = `Outcome: ${model.outcome_definition}; reference outcome: ${model.reference_outcome}.`;
   $("modelSpecification").innerHTML = `<div class="specification-head"><span>Factor</span><span>Definition</span><span>Reference</span></div>${model.specifications.map((item) => `<div><strong>${esc(item.label)}</strong><span>${esc(item.definition)}</span><span>${esc(item.reference)}</span></div>`).join("")}`;
+}
+
+function renderInlineSpecification(targetId, model) {
+  $(targetId).innerHTML = `<div class="specification-head"><span>Factor</span><span>Definition</span><span>Reference</span></div>${model.specifications.map((item) => `<div><strong>${esc(item.label)}</strong><span>${esc(item.definition)}</span><span>${esc(item.reference)}</span></div>`).join("")}`;
+}
+
+function renderCollisionMatrix(matrix) {
+  const short = {
+    "Merchant Vessel >= 100gt": "Merchant ≥100 GT",
+    "Fishing Vessel": "Fishing",
+    "Small Commercial (under 100gt, excl. FVs)": "Small commercial",
+    "Recreational (non Commercial)": "Recreational",
+    "Other - Assorted": "Other",
+  };
+  const maxCount = Math.max(...matrix.cells.map((cell) => cell.n), 1);
+  const cellLookup = new Map(matrix.cells.map((cell) => [`${cell.first}|${cell.second}`, cell]));
+  const findCell = (first, second) => cellLookup.get(`${first}|${second}`) || cellLookup.get(`${second}|${first}`);
+  const header = `<div class="collision-row collision-head"><div></div>${matrix.categories.map((category) => `<div>${esc(short[category] || category)}</div>`).join("")}</div>`;
+  const rows = matrix.categories.map((first) => `<div class="collision-row"><div class="collision-label">${esc(short[first] || first)}</div>${matrix.categories.map((second) => {
+    const cell = findCell(first, second);
+    if (!cell) return `<div class="collision-cell empty">—</div>`;
+    const intensity = cell.n ? .09 + .82 * Math.sqrt(cell.n / maxCount) : .025;
+    const title = `${first} × ${second}: ${cell.n} unique collision occurrences; ${cell.serious} serious/very serious (${pct(cell.serious_share)}), 95% CI ${pct(cell.ci_low)}–${pct(cell.ci_high)}; ${cell.casualties} recorded injured/fatal people.`;
+    return `<div class="collision-cell" style="background:rgba(20,125,128,${intensity.toFixed(3)})" title="${esc(title)}"><strong>${cell.n || "—"}</strong><small>${cell.n ? `${pct(cell.serious_share)} serious` : "no records"}</small></div>`;
+  }).join("")}</div>`).join("");
+  $("collisionMatrix").innerHTML = header + rows;
 }
 
 function renderPersonFlow(flow) {
@@ -565,6 +591,20 @@ function renderConsequences() {
   renderCalibration(model.validation);
   renderModelSpecification(model);
   renderPersonFlow(analysis.person_flow);
+  const personModel = analysis.person_severity_model;
+  $("personModelN").textContent = numberFormat.format(personModel.n);
+  $("personModelOutcomes").textContent = `${numberFormat.format(personModel.positive_outcomes)} · ${(100 * personModel.positive_rate).toFixed(1)}%`;
+  $("personModelAuc").textContent = personModel.validation.auc.toFixed(3);
+  renderForestPlot(personModel, "personForestPlot", .1, 16);
+  renderInlineSpecification("personModelSpecification", personModel);
+  $("collisionPairN").textContent = numberFormat.format(analysis.collision_pairs.collision_occurrences);
+  renderCollisionMatrix(analysis.collision_pairs);
+  const damageModel = analysis.vessel_damage_model;
+  $("damageModelN").textContent = numberFormat.format(damageModel.n);
+  $("damageModelOutcomes").textContent = `${numberFormat.format(damageModel.positive_outcomes)} · ${(100 * damageModel.positive_rate).toFixed(1)}%`;
+  $("damageModelAuc").textContent = damageModel.validation.auc.toFixed(3);
+  renderForestPlot(damageModel, "damageForestPlot", .1, 64);
+  renderInlineSpecification("damageModelSpecification", damageModel);
   renderProfileBars($("ageDamageChart"), analysis.vessel_profile.by_age);
   renderProfileBars($("tonnageDamageChart"), analysis.vessel_profile.by_tonnage);
 }
@@ -750,7 +790,7 @@ function setupBrief() {
 
 async function init() {
   try {
-    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json"), fetch("data/context.json?v=8")]);
+    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json?v=10"), fetch("data/context.json?v=10")]);
     if (!response.ok || !contextResponse.ok) throw new Error(`Data request failed: ${response.status}/${contextResponse.status}`);
     [state.data, state.contextData] = await Promise.all([response.json(), contextResponse.json()]);
     $("sourceLink").href = state.data.meta.source_url;

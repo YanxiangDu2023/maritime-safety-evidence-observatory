@@ -7,7 +7,7 @@
     <title>Maritime Safety Evidence Observatory</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/leaflet.css" />
-    <link rel="stylesheet" href="styles.css?v=8" />
+    <link rel="stylesheet" href="styles.css?v=10" />
   </head>
   <body>
     <div class="loading-screen" id="loadingScreen">
@@ -284,6 +284,41 @@
               <p class="chart-footnote">Band width represents affected-person records. The diagram describes the published records and is not a population injury rate.</p>
             </article>
 
+            <article class="panel deep-model-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Person-level adjusted model</span><h2>Serious injury or death among affected people</h2></div><span class="panel-note">Occurrence-clustered 95% CI</span></div>
+              <div class="deep-model-summary">
+                <div><span>PERSON RECORDS</span><strong id="personModelN">—</strong></div>
+                <div><span>SERIOUS / FATAL</span><strong id="personModelOutcomes">—</strong></div>
+                <div><span>GROUPED CV AUC</span><strong id="personModelAuc">—</strong></div>
+                <p>People from the same occurrence stay in the same validation fold. Confidence intervals use occurrence-clustered sandwich standard errors.</p>
+              </div>
+              <div class="forest-axis deep"><span>Lower adjusted odds</span><strong>1.0</strong><span>Higher adjusted odds</span></div>
+              <div id="personForestPlot" class="forest-plot deep-forest"></div>
+              <details class="inline-specification"><summary>Person model definitions and reference groups</summary><div id="personModelSpecification" class="specification-table"></div></details>
+              <p class="chart-footnote">Outcome: serious injury, confirmed death or missing with death presumed. Results are conditional on appearing in the affected-person table and do not identify causal effects.</p>
+            </article>
+
+            <article class="panel collision-pair-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Multi-vessel structure</span><h2>Collision pairing matrix</h2></div><span class="panel-note"><strong id="collisionPairN">—</strong> unique collision occurrences</span></div>
+              <div class="collision-matrix-scroll"><div id="collisionMatrix" class="collision-matrix"></div></div>
+              <div class="collision-legend"><span><i></i>Cell colour = number of collision occurrences</span><span>Large value = occurrence count</span><span>Small value = serious share</span></div>
+              <p class="chart-footnote">Each cell counts unique collision occurrences containing that vessel-category pairing. An occurrence involving more than two vessels can contribute to more than one cell. Tooltips include the Wilson 95% interval and recorded casualties.</p>
+            </article>
+
+            <article class="panel deep-model-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Vessel-level adjusted model</span><h2>Material damage or vessel loss</h2></div><span class="panel-note">Occurrence-clustered 95% CI</span></div>
+              <div class="deep-model-summary">
+                <div><span>VESSEL RECORDS</span><strong id="damageModelN">—</strong></div>
+                <div><span>MATERIAL DAMAGE / LOSS</span><strong id="damageModelOutcomes">—</strong></div>
+                <div><span>GROUPED CV AUC</span><strong id="damageModelAuc">—</strong></div>
+                <p>Age and gross tonnage are modelled continuously. Multiple vessels from the same occurrence are clustered together for uncertainty and validation.</p>
+              </div>
+              <div class="forest-axis deep"><span>Lower adjusted odds</span><strong>1.0</strong><span>Higher adjusted odds</span></div>
+              <div id="damageForestPlot" class="forest-plot deep-forest"></div>
+              <details class="inline-specification"><summary>Damage model definitions and reference groups</summary><div id="damageModelSpecification" class="specification-table"></div></details>
+              <p class="chart-footnote">Outcome excludes minor damage. Associations describe vessels represented in reported occurrences and are not fleet-wide damage probabilities.</p>
+            </article>
+
             <article class="panel vessel-profile-panel">
               <div class="panel-header"><div><span class="panel-kicker">Vessel condition</span><h2>Recorded damage by vessel age</h2></div><span class="panel-note">All vessel records</span></div>
               <div id="ageDamageChart" class="profile-bars"></div>
@@ -406,6 +441,6 @@
     </dialog>
 
     <script src="assets/leaflet.js"></script>
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=10"></script>
   </body>
 </html>
