@@ -17,9 +17,10 @@ Multi-vessel occurrences are retained in vessel-level analyses. They may appear 
 ### Person injury-severity model
 
 The person-level binary outcome combines `Physical_Condition_L2 = Serious injury`,
-confirmed deaths and persons recorded as missing with death presumed. Minor injury
-and no injury form the reference outcome. Predictors include age, gender, person
-type, duty status, vessel category and occurrence event. Missing age, gender and
+confirmed deaths and persons recorded as missing with death presumed. Minor injury,
+no injury and unavailable injury severity form the reference outcome. Predictors
+include age, gender, person type, duty status, vessel category and occurrence event.
+Missing age, gender and
 duty status are represented explicitly. Wald intervals use an occurrence-clustered
 sandwich covariance matrix because multiple people may belong to one occurrence.
 Five-fold validation is grouped by `Occurrence_Id`, so one occurrence cannot
