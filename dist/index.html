@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="An evidence-aware dashboard for exploring reported UK marine occurrences." />
+    <title>Maritime Safety Evidence Observatory</title>
+    <link rel="stylesheet" href="assets/leaflet.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="loading-screen" id="loadingScreen">
+      <div class="loading-mark"><span></span><span></span><span></span></div>
+      <p>Preparing reported occurrence data…</p>
+    </div>
+
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 36 36"><path d="M18 3v21M11 10h14M7 20c2 7 7 11 11 12 4-1 9-5 11-12-3 3-7 4-11 4S10 23 7 20Z"/><circle cx="18" cy="6" r="3"/></svg>
+          </div>
+          <div>
+            <span class="eyebrow">Independent prototype</span>
+            <strong>Maritime Safety<br />Evidence Observatory</strong>
+          </div>
+        </div>
+
+        <div class="filter-heading">
+          <span>Analysis filters</span>
+          <button class="text-button" id="resetFilters">Reset</button>
+        </div>
+
+        <label class="filter-control">
+          <span>Year range</span>
+          <div class="range-labels"><strong id="yearStartLabel">2020</strong><strong id="yearEndLabel">2026</strong></div>
+          <div class="dual-range">
+            <input id="yearStart" type="range" min="2020" max="2026" value="2020" aria-label="Start year" />
+            <input id="yearEnd" type="range" min="2020" max="2026" value="2026" aria-label="End year" />
+          </div>
+        </label>
+
+        <label class="filter-control">
+          <span>Occurrence event</span>
+          <select id="eventFilter"><option value="All">All events</option></select>
+        </label>
+
+        <label class="filter-control">
+          <span>Vessel category</span>
+          <select id="vesselFilter"><option value="All">All categories</option></select>
+        </label>
+
+        <label class="filter-control">
+          <span>Severity</span>
+          <select id="severityFilter"><option value="All">All severities</option></select>
+        </label>
+
+        <div class="source-status">
+          <div class="status-line"><span class="status-dot live"></span><span>MAIB occurrences</span><strong>Available</strong></div>
+          <div class="status-line"><span class="status-dot live"></span><span>Vessel records</span><strong>Linked</strong></div>
+          <div class="status-line"><span class="status-dot partial"></span><span>Investigation reports</span><strong>Partial</strong></div>
+        </div>
+
+        <a class="source-link" id="sourceLink" href="#" target="_blank" rel="noreferrer">Open official data source ↗</a>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="mobile-menu" id="mobileMenu" aria-label="Toggle filters">☰</button>
+          <div>
+            <span class="eyebrow" id="dateStamp">UK public occurrence data</span>
+            <h1 id="pageTitle">Reported occurrence overview</h1>
+          </div>
+          <div class="topbar-actions">
+            <div class="scope-pill"><span></span><strong id="scopeCount">—</strong> in scope</div>
+            <button class="primary-button" id="briefButton">Generate evidence brief</button>
+          </div>
+        </header>
+
+        <nav class="tab-nav" aria-label="Dashboard sections">
+          <button class="tab active" data-tab="overview">01&nbsp;&nbsp;Overview</button>
+          <button class="tab" data-tab="patterns">02&nbsp;&nbsp;Pattern explorer</button>
+          <button class="tab" data-tab="evidence">03&nbsp;&nbsp;Evidence explorer</button>
+          <button class="tab" data-tab="quality">04&nbsp;&nbsp;Data confidence</button>
+        </nav>
+
+        <section class="tab-panel active" id="overviewPanel">
+          <div class="method-banner">
+            <span class="method-icon">i</span>
+            <div><strong>Interpret with care.</strong> These figures describe reported occurrences, not exposure-adjusted accident rates. The latest year is incomplete.</div>
+            <button data-tab-jump="quality">View confidence notes →</button>
+          </div>
+
+          <div class="metric-grid">
+            <article class="metric-card"><span>Reported occurrences</span><strong id="metricOccurrences">—</strong><small id="metricOccurrencesNote">Filtered records</small></article>
+            <article class="metric-card"><span>Vessels involved</span><strong id="metricVessels">—</strong><small>Linked vessel records</small></article>
+            <article class="metric-card accent"><span>People injured</span><strong id="metricInjuries">—</strong><small>Recorded affected people</small></article>
+            <article class="metric-card dark"><span>Fatalities</span><strong id="metricFatalities">—</strong><small>Recorded affected people</small></article>
+          </div>
+
+          <div class="dashboard-grid overview-grid">
+            <article class="panel chart-panel trend-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Temporal view</span><h2>Reported occurrences over time</h2></div><span class="panel-note">Year of report</span></div>
+              <div class="chart-wrap svg-chart" id="trendChart"></div>
+            </article>
+
+            <article class="panel map-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Geographic view</span><h2>Occurrence locations</h2></div><span class="panel-note" id="mapNote">Coordinates available</span></div>
+              <div id="map" aria-label="Interactive occurrence map"></div>
+              <div class="map-legend"><span><i class="legend-dot incident"></i>Incident</span><span><i class="legend-dot casualty"></i>Casualty</span><span><i class="legend-dot serious"></i>Serious / very serious</span></div>
+            </article>
+
+            <article class="panel chart-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Event profile</span><h2>Leading occurrence events</h2></div><span class="panel-note">Top 7</span></div>
+              <div class="chart-wrap compact svg-chart" id="eventChart"></div>
+            </article>
+
+            <article class="panel chart-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Outcome classification</span><h2>Severity mix</h2></div><span class="panel-note">Reported classification</span></div>
+              <div class="donut-layout"><div class="chart-wrap donut svg-chart" id="severityChart"></div><div class="legend-list" id="severityLegend"></div></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="patternsPanel">
+          <div class="section-intro"><div><span class="eyebrow">Explore associations, not causes</span><h2>Where do reported patterns concentrate?</h2></div><p>Use the matrix to compare event counts across vessel categories. Select a cell to inspect the corresponding occurrence profile.</p></div>
+
+          <div class="dashboard-grid patterns-grid">
+            <article class="panel matrix-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Cross-tabulation</span><h2>Vessel category × occurrence event</h2></div><span class="panel-note">Click a cell</span></div>
+              <div class="matrix-scroll"><div id="heatmap" class="heatmap"></div></div>
+            </article>
+
+            <article class="panel selection-panel">
+              <span class="panel-kicker">Selected pattern</span>
+              <h2 id="selectionTitle">Select a matrix cell</h2>
+              <p id="selectionDescription">Choose a vessel category and event combination to inspect its recorded outcomes.</p>
+              <div class="selection-stats">
+                <div><strong id="selectionCount">—</strong><span>Occurrences</span></div>
+                <div><strong id="selectionSerious">—</strong><span>Serious share</span></div>
+                <div><strong id="selectionPeople">—</strong><span>People affected</span></div>
+              </div>
+              <div class="interpretation-box"><strong>Interpretation boundary</strong><p id="selectionBoundary">Counts cannot establish which vessel group has the highest underlying risk without exposure data such as fleet size, voyages or operating hours.</p></div>
+            </article>
+
+            <article class="panel chart-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Human consequences</span><h2>Injuries and fatalities by vessel category</h2></div><span class="panel-note">Recorded counts</span></div>
+              <div class="chart-wrap svg-chart" id="outcomeChart"></div>
+            </article>
+
+            <article class="panel insight-panel">
+              <span class="panel-kicker">Analytical reading</span>
+              <h2>What this view can—and cannot—support</h2>
+              <div class="insight-row good"><span>Can support</span><p>Describing how reported events, vessel categories and recorded outcomes are distributed within the published dataset.</p></div>
+              <div class="insight-row caution"><span>Use caution</span><p>Comparing category counts where reporting practices, operating environments and fleet exposure differ.</p></div>
+              <div class="insight-row stop"><span>Cannot support</span><p>Causal claims or true accident-rate rankings without a denominator and an appropriate research design.</p></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="evidencePanel">
+          <div class="section-intro"><div><span class="eyebrow">Traceable public records</span><h2>Investigation evidence explorer</h2></div><p>This prototype indexes occurrence descriptions with published-report links. Full document retrieval and page-level citations are the next implementation stage.</p></div>
+
+          <div class="evidence-toolbar">
+            <label class="search-box"><span>⌕</span><input id="evidenceSearch" type="search" placeholder="Search descriptions, events or vessel types…" /></label>
+            <div class="theme-pills" id="themePills"></div>
+          </div>
+
+          <div class="evidence-summary">
+            <div><span>Published reports in current scope</span><strong id="reportCount">—</strong></div>
+            <div><span>Current evidence theme</span><strong id="activeTheme">All themes</strong></div>
+            <div><span>Citation standard</span><strong>Source-linked</strong></div>
+          </div>
+
+          <div class="evidence-layout">
+            <div class="evidence-list" id="evidenceList"></div>
+            <aside class="evidence-detail" id="evidenceDetail">
+              <span class="panel-kicker">Evidence detail</span>
+              <h2>Select a report-linked occurrence</h2>
+              <p>Choose a record to review its description, classification and source link.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="qualityPanel">
+          <div class="section-intro"><div><span class="eyebrow">Evidence before inference</span><h2>Data confidence and analytical limits</h2></div><p>Quality checks are calculated from the downloaded source tables, not manually entered into the interface.</p></div>
+
+          <div class="quality-cards">
+            <article><span>Occurrence rows</span><strong id="qualityOccurrences">—</strong><small>Primary table</small></article>
+            <article><span>Vessel rows</span><strong id="qualityVessels">—</strong><small>Linked by occurrence ID</small></article>
+            <article><span>Affected-person rows</span><strong id="qualityPeople">—</strong><small>Linked by occurrence ID</small></article>
+            <article><span>Relationship integrity</span><strong id="qualityIntegrity">—</strong><small>Unmatched linked records</small></article>
+          </div>
+
+          <div class="dashboard-grid quality-grid">
+            <article class="panel chart-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Completeness</span><h2>Missingness in key fields</h2></div><span class="panel-note">Source table</span></div>
+              <div class="chart-wrap svg-chart" id="missingChart"></div>
+            </article>
+
+            <article class="panel pipeline-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Reproducibility</span><h2>Evidence pipeline</h2></div></div>
+              <div class="pipeline">
+                <div><span>01</span><strong>Official CSV exports</strong><small>Source preserved</small></div>
+                <i></i><div><span>02</span><strong>Schema & relationship checks</strong><small>Failures recorded</small></div>
+                <i></i><div><span>03</span><strong>Analysis-ready records</strong><small>Definitions separated</small></div>
+                <i></i><div><span>04</span><strong>Dashboard & brief</strong><small>Limits displayed</small></div>
+              </div>
+            </article>
+
+            <article class="panel confidence-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Decision boundary</span><h2>Can the available data answer the question?</h2></div></div>
+              <div class="confidence-table">
+                <div class="confidence-head"><span>Research question</span><span>Confidence</span><span>Reason</span></div>
+                <div><span>How are reported event types distributed?</span><span class="badge high">High</span><span>Event classification is nearly complete.</span></div>
+                <div><span>Which categories appear most often in reported records?</span><span class="badge moderate">Moderate</span><span>Counts are available, but reporting and exposure differ.</span></div>
+                <div><span>Which vessel category has the highest accident risk?</span><span class="badge insufficient">Insufficient</span><span>No fleet, voyage or operating-hour denominator.</span></div>
+                <div><span>Did a regulation reduce accidents?</span><span class="badge insufficient">Insufficient</span><span>No counterfactual or causal identification strategy.</span></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <footer>
+          <div><strong>Maritime Safety Evidence Observatory</strong><span>Independent portfolio prototype using public MAIB data.</span></div>
+          <div><span id="footerUpdated">Source update —</span><span>Methodology-first design</span></div>
+        </footer>
+      </main>
+    </div>
+
+    <dialog id="briefModal" class="brief-modal">
+      <button class="modal-close" id="closeBrief" aria-label="Close">×</button>
+      <div id="briefContent"></div>
+      <div class="modal-actions"><button class="secondary-button" id="copyBrief">Copy summary</button><button class="primary-button" id="printBrief">Print / save PDF</button></div>
+    </dialog>
+
+    <script src="assets/leaflet.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
