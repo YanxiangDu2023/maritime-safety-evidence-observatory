@@ -245,8 +245,11 @@ button { cursor: pointer; }
 .forest-axis span:last-child { text-align: right; }
 .forest-plot { display: grid; gap: 2px; }
 .forest-row { display: grid; grid-template-columns: 170px 1fr 115px; gap: 10px; align-items: center; min-height: 38px; border-top: 1px solid #e5e3dc; }
+.forest-row:is(button) { width: 100%; padding: 0 5px; color: inherit; background: transparent; border-right: 0; border-bottom: 0; border-left: 0; cursor: pointer; text-align: left; }
+.forest-row:is(button):hover, .forest-row:is(button):focus-visible, .forest-row.selected { background: #edf3ef; outline: none; }
+.forest-row.selected { box-shadow: inset 3px 0 var(--teal); }
 .forest-label { color: var(--ink-soft); font-size: 9px; line-height: 1.25; }
-.forest-scale { position: relative; height: 22px; background: linear-gradient(90deg, transparent 0 24%, rgba(20,125,128,.04) 24% 100%); }
+.forest-scale { position: relative; display: block; height: 22px; background: linear-gradient(90deg, transparent 0 24%, rgba(20,125,128,.04) 24% 100%); }
 .forest-reference { position: absolute; top: 0; bottom: 0; left: 33.33%; width: 1px; background: #9aa4a5; }
 .forest-ci { position: absolute; top: 10px; height: 2px; background: #9aa6a8; }
 .forest-ci.significant { background: var(--coral); }
@@ -273,6 +276,19 @@ button { cursor: pointer; }
 .deep-model-summary span { display: block; color: var(--ink-soft); font-size: 8px; font-weight: 800; letter-spacing: .06em; }
 .deep-model-summary strong { display: block; margin-top: 5px; font-family: Georgia, serif; font-size: 20px; font-weight: 500; }
 .deep-model-summary p { color: var(--ink-soft); font-size: 9px; line-height: 1.5; }
+.analysis-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 0 0 14px; padding: 11px 12px; background: #f0efe8; border: 1px solid var(--line); }
+.analysis-controls label { display: grid; gap: 5px; min-width: 175px; color: var(--ink-soft); font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.analysis-controls select { min-height: 34px; padding: 7px 28px 7px 9px; color: var(--ink); background: white; border: 1px solid var(--line); }
+.analysis-controls .control-check { display: flex; flex-direction: row; gap: 7px; align-items: center; min-height: 34px; padding: 0 10px; background: white; border: 1px solid var(--line); }
+.analysis-controls input { accent-color: var(--teal); }
+.interaction-hint { margin-left: auto; align-self: center; color: #718286; font-size: 8px; }
+.selection-detail { display: grid; grid-template-columns: 1.4fr repeat(3, minmax(110px, .55fr)); gap: 1px; margin-top: 13px; color: var(--ink); background: var(--line); border: 1px solid var(--line); }
+.selection-detail > div, .selection-detail > p { margin: 0; padding: 12px 14px; background: #edf1ec; }
+.selection-detail span { display: block; color: var(--ink-soft); font-size: 7px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.selection-detail strong { display: block; margin-top: 4px; font-family: Georgia, serif; font-size: 15px; font-weight: 500; }
+.selection-detail p { grid-column: 1 / -1; color: var(--ink-soft); font-size: 9px; line-height: 1.5; }
+.selection-detail p strong { display: inline; color: var(--ink); font-family: inherit; font-size: inherit; font-weight: 800; }
+.empty-analysis { padding: 22px; color: var(--ink-soft); background: #f0efe8; text-align: center; font-size: 10px; }
 .deep-forest { grid-template-columns: 1fr; }
 .deep-forest .forest-row { min-height: 36px; }
 .forest-axis.deep { margin-top: 6px; }
@@ -286,6 +302,8 @@ button { cursor: pointer; }
 .collision-head > div { display: flex; min-height: 48px; align-items: end; justify-content: center; padding: 4px; color: var(--ink-soft); font-size: 8px; font-weight: 800; text-align: center; }
 .collision-label { display: flex; align-items: center; color: var(--ink-soft); font-size: 9px; }
 .collision-cell { min-height: 68px; display: grid; place-content: center; border: 1px solid rgba(20,125,128,.08); border-radius: 2px; color: var(--ink); text-align: center; }
+.collision-cell:is(button) { width: 100%; padding: 5px; cursor: pointer; font-family: inherit; }
+.collision-cell:is(button):hover, .collision-cell:is(button):focus-visible, .collision-cell.selected { outline: 3px solid var(--coral); outline-offset: -3px; }
 .collision-cell strong { font-family: Georgia, serif; font-size: 19px; font-weight: 500; }
 .collision-cell small { margin-top: 3px; font-size: 8px; }
 .collision-cell.empty { color: #a4acae; background: #f1f0ea; }
@@ -442,6 +460,8 @@ footer div { display: flex; gap: 14px; } footer strong { color: var(--ink); } fo
   .validation-layout, .specification-intro { grid-template-columns: 1fr; }
   .deep-model-summary { grid-template-columns: 1fr 1fr; }
   .deep-model-summary > p { grid-column: 1 / -1; }
+  .selection-detail { grid-template-columns: 1fr 1fr; }
+  .selection-detail > p { grid-column: 1 / -1; }
   .specification-table > div { grid-template-columns: 1fr; gap: 4px; }
   .source-files { grid-template-columns: 1fr; }
   .fixed-scope-notice { display: grid; }
@@ -457,6 +477,10 @@ footer div { display: flex; gap: 14px; } footer strong { color: var(--ink); } fo
   .context-kpis, .context-toolbar { grid-template-columns: 1fr; }
   .context-map-panel .panel-header { display: grid; }
   .context-map-status { justify-items: start; min-width: 0; text-align: left; }
+  .analysis-controls { display: grid; }
+  .analysis-controls label { min-width: 0; }
+  .interaction-hint { margin-left: 0; }
+  .selection-detail { grid-template-columns: 1fr; }
 }
 
 @media print {

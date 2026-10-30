@@ -368,21 +368,21 @@ def severity_model(occurrences: list[dict[str, str]], vessel_by_occurrence: dict
 
 def person_severity_model(persons: list[dict[str, str]]) -> dict:
     specifications = [
-        {"label": "Age (per 10 years)", "definition": "Recorded age divided by 10; unknown ages set to the sample reference", "reference": "Ten years younger"},
-        {"label": "Age unknown", "definition": "Age is unavailable or implausible", "reference": "Age recorded"},
-        {"label": "Female", "definition": "Gender = Female", "reference": "Male"},
-        {"label": "Gender unknown", "definition": "Gender is unknown or unavailable", "reference": "Male"},
-        {"label": "Passenger", "definition": "Affected person type = Passenger", "reference": "Crew"},
-        {"label": "Other person", "definition": "Affected person type = Other", "reference": "Crew"},
-        {"label": "On duty", "definition": "On duty immediately before the casualty", "reference": "Known not on duty"},
-        {"label": "Duty status unknown", "definition": "Duty status is blank, unknown or unavailable", "reference": "Known not on duty"},
-        {"label": "Fishing vessel", "definition": "Vessel category = Fishing vessel", "reference": "Merchant vessel ≥100 GT"},
-        {"label": "Recreational vessel", "definition": "Vessel category = Recreational", "reference": "Merchant vessel ≥100 GT"},
-        {"label": "Small commercial vessel", "definition": "Small commercial vessel under 100 GT", "reference": "Merchant vessel ≥100 GT"},
-        {"label": "Accident to person(s)", "definition": "Main event is accident to person(s)", "reference": "Other event types"},
-        {"label": "Capsizing / listing", "definition": "Main event is capsizing/listing", "reference": "Other event types"},
-        {"label": "Collision / contact", "definition": "Main event is collision or contact", "reference": "Other event types"},
-        {"label": "Fire / explosion", "definition": "Main event is fire/explosion", "reference": "Other event types"},
+        {"label": "Age (per 10 years)", "group": "Demographics", "definition": "Recorded age divided by 10; unknown ages set to the sample reference", "reference": "Ten years younger"},
+        {"label": "Age unknown", "group": "Demographics", "definition": "Age is unavailable or implausible", "reference": "Age recorded"},
+        {"label": "Female", "group": "Demographics", "definition": "Gender = Female", "reference": "Male"},
+        {"label": "Gender unknown", "group": "Demographics", "definition": "Gender is unknown or unavailable", "reference": "Male"},
+        {"label": "Passenger", "group": "Role & duty", "definition": "Affected person type = Passenger", "reference": "Crew"},
+        {"label": "Other person", "group": "Role & duty", "definition": "Affected person type = Other", "reference": "Crew"},
+        {"label": "On duty", "group": "Role & duty", "definition": "On duty immediately before the casualty", "reference": "Known not on duty"},
+        {"label": "Duty status unknown", "group": "Role & duty", "definition": "Duty status is blank, unknown or unavailable", "reference": "Known not on duty"},
+        {"label": "Fishing vessel", "group": "Vessel category", "definition": "Vessel category = Fishing vessel", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Recreational vessel", "group": "Vessel category", "definition": "Vessel category = Recreational", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Small commercial vessel", "group": "Vessel category", "definition": "Small commercial vessel under 100 GT", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Accident to person(s)", "group": "Occurrence event", "definition": "Main event is accident to person(s)", "reference": "Other event types"},
+        {"label": "Capsizing / listing", "group": "Occurrence event", "definition": "Main event is capsizing/listing", "reference": "Other event types"},
+        {"label": "Collision / contact", "group": "Occurrence event", "definition": "Main event is collision or contact", "reference": "Other event types"},
+        {"label": "Fire / explosion", "group": "Occurrence event", "definition": "Main event is fire/explosion", "reference": "Other event types"},
     ]
     design: list[list[float]] = []
     outcomes: list[int] = []
@@ -434,21 +434,21 @@ def person_severity_model(persons: list[dict[str, str]]) -> dict:
 
 def vessel_damage_model(vessels: list[dict[str, str]]) -> dict:
     specifications = [
-        {"label": "Vessel age (per 10 years)", "definition": "Occurrence year minus year built", "reference": "Ten years younger"},
-        {"label": "Vessel age unknown", "definition": "Year built unavailable or implausible", "reference": "Age recorded"},
-        {"label": "Gross tonnage (10×)", "definition": "One-unit increase in log10 gross tonnage", "reference": "Tenfold lower gross tonnage"},
-        {"label": "Gross tonnage unknown", "definition": "Gross tonnage is zero or unavailable", "reference": "Gross tonnage recorded"},
-        {"label": "Fishing vessel", "definition": "Vessel category = Fishing vessel", "reference": "Merchant vessel ≥100 GT"},
-        {"label": "Recreational vessel", "definition": "Vessel category = Recreational", "reference": "Merchant vessel ≥100 GT"},
-        {"label": "Small commercial vessel", "definition": "Small commercial vessel under 100 GT", "reference": "Merchant vessel ≥100 GT"},
-        {"label": "Other vessel category", "definition": "Other/assorted vessel category", "reference": "Merchant vessel ≥100 GT"},
-        {"label": "Collision / contact", "definition": "Main event is collision or contact", "reference": "Other event types"},
-        {"label": "Grounding / stranding", "definition": "Main event is grounding/stranding", "reference": "Other event types"},
-        {"label": "Fire / explosion", "definition": "Main event is fire/explosion", "reference": "Other event types"},
-        {"label": "Flooding / foundering", "definition": "Main event is flooding/foundering", "reference": "Other event types"},
-        {"label": "Loss of control", "definition": "Main event is loss of control", "reference": "Other event types"},
-        {"label": "Multiple vessels involved", "definition": "Occurrence contains more than one vessel record", "reference": "Single-vessel occurrence"},
-        {"label": "Calendar year", "definition": "One-year increase in reported year", "reference": "Previous calendar year"},
+        {"label": "Vessel age (per 10 years)", "group": "Vessel characteristics", "definition": "Occurrence year minus year built", "reference": "Ten years younger"},
+        {"label": "Vessel age unknown", "group": "Vessel characteristics", "definition": "Year built unavailable or implausible", "reference": "Age recorded"},
+        {"label": "Gross tonnage (10×)", "group": "Vessel characteristics", "definition": "One-unit increase in log10 gross tonnage", "reference": "Tenfold lower gross tonnage"},
+        {"label": "Gross tonnage unknown", "group": "Vessel characteristics", "definition": "Gross tonnage is zero or unavailable", "reference": "Gross tonnage recorded"},
+        {"label": "Fishing vessel", "group": "Vessel category", "definition": "Vessel category = Fishing vessel", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Recreational vessel", "group": "Vessel category", "definition": "Vessel category = Recreational", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Small commercial vessel", "group": "Vessel category", "definition": "Small commercial vessel under 100 GT", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Other vessel category", "group": "Vessel category", "definition": "Other/assorted vessel category", "reference": "Merchant vessel ≥100 GT"},
+        {"label": "Collision / contact", "group": "Occurrence event", "definition": "Main event is collision or contact", "reference": "Other event types"},
+        {"label": "Grounding / stranding", "group": "Occurrence event", "definition": "Main event is grounding/stranding", "reference": "Other event types"},
+        {"label": "Fire / explosion", "group": "Occurrence event", "definition": "Main event is fire/explosion", "reference": "Other event types"},
+        {"label": "Flooding / foundering", "group": "Occurrence event", "definition": "Main event is flooding/foundering", "reference": "Other event types"},
+        {"label": "Loss of control", "group": "Occurrence event", "definition": "Main event is loss of control", "reference": "Other event types"},
+        {"label": "Multiple vessels involved", "group": "Occurrence context", "definition": "Occurrence contains more than one vessel record", "reference": "Single-vessel occurrence"},
+        {"label": "Calendar year", "group": "Occurrence context", "definition": "One-year increase in reported year", "reference": "Previous calendar year"},
     ]
     occurrence_counts = Counter(clean(row.get("Occurrence_Id")) for row in vessels)
     known_ages = []

@@ -7,7 +7,7 @@
     <title>Maritime Safety Evidence Observatory</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/leaflet.css" />
-    <link rel="stylesheet" href="styles.css?v=10" />
+    <link rel="stylesheet" href="styles.css?v=11" />
   </head>
   <body>
     <div class="loading-screen" id="loadingScreen">
@@ -238,7 +238,7 @@
             <p>This view moves beyond occurrence counts by retaining vessel- and person-level records. Results remain conditional on a reported occurrence and are not exposure-adjusted risk estimates.</p>
           </div>
 
-          <div class="fixed-scope-notice"><strong>Full-snapshot model</strong><span>Global filters are paused in this tab. All model, person-flow and vessel-profile panels use the complete published snapshot.</span></div>
+          <div class="fixed-scope-notice"><strong>Full-snapshot models</strong><span>Left-side data filters are paused because changing them would require refitting the models. Use the dedicated factor, significance, metric and sample-size controls inside each analysis.</span></div>
 
           <div class="analysis-banner">
             <div><span>MODEL SAMPLE</span><strong id="modelSample">—</strong><small>reported occurrences</small></div>
@@ -292,17 +292,29 @@
                 <div><span>GROUPED CV AUC</span><strong id="personModelAuc">—</strong></div>
                 <p>People from the same occurrence stay in the same validation fold. Confidence intervals use occurrence-clustered sandwich standard errors.</p>
               </div>
+              <div class="analysis-controls" aria-label="Person model filters">
+                <label><span>Factor group</span><select id="personFactorGroup"><option>All</option><option>Demographics</option><option>Role &amp; duty</option><option>Vessel category</option><option>Occurrence event</option></select></label>
+                <label class="control-check"><input id="personSignificantOnly" type="checkbox" /><span>Only 95% CI excluding 1</span></label>
+                <span class="interaction-hint">Click or tap a factor for its definition and reference group.</span>
+              </div>
               <div class="forest-axis deep"><span>Lower adjusted odds</span><strong>1.0</strong><span>Higher adjusted odds</span></div>
               <div id="personForestPlot" class="forest-plot deep-forest"></div>
+              <div id="personEffectDetail" class="selection-detail" aria-live="polite"></div>
               <details class="inline-specification"><summary>Person model definitions and reference groups</summary><div id="personModelSpecification" class="specification-table"></div></details>
               <p class="chart-footnote">Outcome: serious injury, confirmed death or missing with death presumed. Results are conditional on appearing in the affected-person table and do not identify causal effects.</p>
             </article>
 
             <article class="panel collision-pair-panel wide-panel">
               <div class="panel-header"><div><span class="panel-kicker">Multi-vessel structure</span><h2>Collision pairing matrix</h2></div><span class="panel-note"><strong id="collisionPairN">—</strong> unique collision occurrences</span></div>
+              <div class="analysis-controls" aria-label="Collision matrix filters">
+                <label><span>Cell metric</span><select id="collisionMetric"><option value="count">Occurrence count</option><option value="serious">Serious share</option><option value="casualties">Recorded casualties</option></select></label>
+                <label><span>Minimum pair sample</span><select id="collisionMinN"><option value="0">No minimum</option><option value="5">At least 5</option><option value="10">At least 10</option><option value="20">At least 20</option></select></label>
+                <span class="interaction-hint">Click or tap a cell to inspect the pair.</span>
+              </div>
               <div class="collision-matrix-scroll"><div id="collisionMatrix" class="collision-matrix"></div></div>
-              <div class="collision-legend"><span><i></i>Cell colour = number of collision occurrences</span><span>Large value = occurrence count</span><span>Small value = serious share</span></div>
-              <p class="chart-footnote">Each cell counts unique collision occurrences containing that vessel-category pairing. An occurrence involving more than two vessels can contribute to more than one cell. Tooltips include the Wilson 95% interval and recorded casualties.</p>
+              <div id="collisionDetail" class="selection-detail" aria-live="polite"></div>
+              <div class="collision-legend" id="collisionLegend"></div>
+              <p class="chart-footnote">Each cell counts unique collision occurrences containing that vessel-category pairing. An occurrence involving more than two vessels can contribute to more than one cell. The fixed detail panel reports the Wilson 95% interval and recorded casualties.</p>
             </article>
 
             <article class="panel deep-model-panel wide-panel">
@@ -313,8 +325,14 @@
                 <div><span>GROUPED CV AUC</span><strong id="damageModelAuc">—</strong></div>
                 <p>Age and gross tonnage are modelled continuously. Multiple vessels from the same occurrence are clustered together for uncertainty and validation.</p>
               </div>
+              <div class="analysis-controls" aria-label="Vessel damage model filters">
+                <label><span>Factor group</span><select id="damageFactorGroup"><option>All</option><option>Vessel characteristics</option><option>Vessel category</option><option>Occurrence event</option><option>Occurrence context</option></select></label>
+                <label class="control-check"><input id="damageSignificantOnly" type="checkbox" /><span>Only 95% CI excluding 1</span></label>
+                <span class="interaction-hint">Click or tap a factor for its definition and reference group.</span>
+              </div>
               <div class="forest-axis deep"><span>Lower adjusted odds</span><strong>1.0</strong><span>Higher adjusted odds</span></div>
               <div id="damageForestPlot" class="forest-plot deep-forest"></div>
+              <div id="damageEffectDetail" class="selection-detail" aria-live="polite"></div>
               <details class="inline-specification"><summary>Damage model definitions and reference groups</summary><div id="damageModelSpecification" class="specification-table"></div></details>
               <p class="chart-footnote">Outcome excludes minor damage. Associations describe vessels represented in reported occurrences and are not fleet-wide damage probabilities.</p>
             </article>
@@ -441,6 +459,6 @@
     </dialog>
 
     <script src="assets/leaflet.js"></script>
-    <script src="app.js?v=10"></script>
+    <script src="app.js?v=11"></script>
   </body>
 </html>

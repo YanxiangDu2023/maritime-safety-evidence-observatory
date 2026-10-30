@@ -15,6 +15,15 @@ const state = {
   contextLayer: "traffic",
   contextYear: 2024,
   contextVessel: "all",
+  personFactorGroup: "All",
+  personSignificantOnly: false,
+  selectedPersonEffect: null,
+  collisionMetric: "count",
+  collisionMinN: 0,
+  selectedCollisionPair: null,
+  damageFactorGroup: "All",
+  damageSignificantOnly: false,
+  selectedDamageEffect: null,
 };
 
 const palette = {
@@ -151,7 +160,7 @@ function setFilterMode(tab) {
   $("yearEnd").disabled = isModelTab || isContextTab;
   $("sidebar").classList.toggle("filters-disabled", isModelTab);
   $("filterModeNote").textContent = isModelTab
-    ? "Full-snapshot model: filters are paused in this tab."
+    ? "Full-snapshot models: use the controls inside each panel."
     : isContextTab
       ? "Year follows Context year; other filters remain active."
       : "Filters apply to descriptive views.";
@@ -456,20 +465,49 @@ function renderSeverityMatrix(matrix) {
   $("severityMatrix").innerHTML = header + rows;
 }
 
-function renderForestPlot(model, targetId = "forestPlot", lowerLimit = .25, upperLimit = 16) {
+function renderEffectDetail(model, label, targetId) {
+  const effect = model.effects.find((item) => item.label === label);
+  const specification = model.specifications?.find((item) => item.label === label);
+  if (!effect || !targetId) return;
+  const significant = effect.ci_low > 1 || effect.ci_high < 1;
+  $(targetId).innerHTML = `<div><span>${esc(specification?.group || "Adjusted factor")}</span><strong>${esc(effect.label)}</strong></div><div><span>Adjusted odds ratio</span><strong>${effect.odds_ratio.toFixed(2)}</strong></div><div><span>95% confidence interval</span><strong>${effect.ci_low.toFixed(2)}–${effect.ci_high.toFixed(2)}</strong></div><p><strong>${significant ? "95% CI excludes 1." : "95% CI includes 1."}</strong> ${esc(specification?.definition || "")} Reference: ${esc(specification?.reference || "not specified")}.</p>`;
+}
+
+function renderForestPlot(model, targetId = "forestPlot", lowerLimit = .25, upperLimit = 16, options = {}) {
   const min = Math.log(lowerLimit), max = Math.log(upperLimit);
   const position = (value) => 100 * (Math.log(Math.max(lowerLimit, Math.min(upperLimit, value))) - min) / (max - min);
-  $(targetId).innerHTML = model.effects.map((effect) => {
+  const specificationByLabel = new Map((model.specifications || []).map((item) => [item.label, item]));
+  const effects = model.effects.filter((effect) => {
+    const groupMatches = !options.group || options.group === "All" || specificationByLabel.get(effect.label)?.group === options.group;
+    const significant = effect.ci_low > 1 || effect.ci_high < 1;
+    return groupMatches && (!options.significantOnly || significant);
+  });
+  if (!effects.length) {
+    $(targetId).innerHTML = `<div class="empty-analysis">No factors match these filters.</div>`;
+    if (options.detailId) $(options.detailId).innerHTML = "";
+    return;
+  }
+  if (options.detailId && !effects.some((effect) => effect.label === options.selectedLabel)) {
+    options.selectedLabel = effects[0].label;
+    options.onSelect?.(options.selectedLabel, false);
+  }
+  $(targetId).innerHTML = effects.map((effect) => {
     const left = position(effect.ci_low);
     const right = position(effect.ci_high);
     const point = position(effect.odds_ratio);
     const significant = effect.ci_low > 1 || effect.ci_high < 1;
-    return `<div class="forest-row">
+    const rowTag = options.detailId ? "button" : "div";
+    const selected = options.detailId && effect.label === options.selectedLabel;
+    return `<${rowTag}${options.detailId ? ` type="button" data-effect="${esc(effect.label)}" aria-pressed="${selected}"` : ""} class="forest-row${selected ? " selected" : ""}">
       <span class="forest-label">${esc(effect.label)}</span>
-      <div class="forest-scale"><i class="forest-reference" style="left:${position(1)}%"></i><span class="forest-ci ${significant ? "significant" : ""}" style="left:${left}%;width:${Math.max(1, right - left)}%"></span><b style="left:${point}%"></b></div>
+      <span class="forest-scale"><i class="forest-reference" style="left:${position(1)}%"></i><span class="forest-ci ${significant ? "significant" : ""}" style="left:${left}%;width:${Math.max(1, right - left)}%"></span><b style="left:${point}%"></b></span>
       <span class="forest-value">${effect.odds_ratio.toFixed(2)} <small>${effect.ci_low.toFixed(2)}–${effect.ci_high.toFixed(2)}</small></span>
-    </div>`;
+    </${rowTag}>`;
   }).join("");
+  if (options.detailId) {
+    $(targetId).querySelectorAll("[data-effect]").forEach((button) => button.addEventListener("click", () => options.onSelect?.(button.dataset.effect, true)));
+    renderEffectDetail(model, options.selectedLabel, options.detailId);
+  }
 }
 
 function renderCalibration(validation) {
@@ -494,6 +532,12 @@ function renderInlineSpecification(targetId, model) {
   $(targetId).innerHTML = `<div class="specification-head"><span>Factor</span><span>Definition</span><span>Reference</span></div>${model.specifications.map((item) => `<div><strong>${esc(item.label)}</strong><span>${esc(item.definition)}</span><span>${esc(item.reference)}</span></div>`).join("")}`;
 }
 
+function renderCollisionDetail(matrix, first, second) {
+  const cell = matrix.cells.find((item) => (item.first === first && item.second === second) || (item.first === second && item.second === first));
+  if (!cell) return;
+  $("collisionDetail").innerHTML = `<div><span>Selected pairing</span><strong>${esc(first)} × ${esc(second)}</strong></div><div><span>Unique occurrences</span><strong>${numberFormat.format(cell.n)}</strong></div><div><span>Serious / very serious</span><strong>${numberFormat.format(cell.serious)} · ${pct(cell.serious_share)}</strong></div><div><span>Recorded casualties</span><strong>${numberFormat.format(cell.casualties)}</strong></div><p>Wilson 95% interval for the serious share: <strong>${pct(cell.ci_low)}–${pct(cell.ci_high)}</strong>. This is a reported-occurrence composition, not a collision rate.</p>`;
+}
+
 function renderCollisionMatrix(matrix) {
   const short = {
     "Merchant Vessel >= 100gt": "Merchant ≥100 GT",
@@ -502,18 +546,39 @@ function renderCollisionMatrix(matrix) {
     "Recreational (non Commercial)": "Recreational",
     "Other - Assorted": "Other",
   };
-  const maxCount = Math.max(...matrix.cells.map((cell) => cell.n), 1);
+  const eligible = matrix.cells.filter((cell) => cell.n >= state.collisionMinN);
+  if (state.selectedCollisionPair) {
+    const selectedCell = matrix.cells.find((cell) => (cell.first === state.selectedCollisionPair.first && cell.second === state.selectedCollisionPair.second) || (cell.first === state.selectedCollisionPair.second && cell.second === state.selectedCollisionPair.first));
+    if (!selectedCell || selectedCell.n < state.collisionMinN) state.selectedCollisionPair = null;
+  }
+  const metricValue = (cell) => state.collisionMetric === "serious" ? cell.serious_share : state.collisionMetric === "casualties" ? cell.casualties : cell.n;
+  const maxValue = Math.max(...eligible.map(metricValue), 1);
   const cellLookup = new Map(matrix.cells.map((cell) => [`${cell.first}|${cell.second}`, cell]));
   const findCell = (first, second) => cellLookup.get(`${first}|${second}`) || cellLookup.get(`${second}|${first}`);
   const header = `<div class="collision-row collision-head"><div></div>${matrix.categories.map((category) => `<div>${esc(short[category] || category)}</div>`).join("")}</div>`;
   const rows = matrix.categories.map((first) => `<div class="collision-row"><div class="collision-label">${esc(short[first] || first)}</div>${matrix.categories.map((second) => {
     const cell = findCell(first, second);
-    if (!cell) return `<div class="collision-cell empty">—</div>`;
-    const intensity = cell.n ? .09 + .82 * Math.sqrt(cell.n / maxCount) : .025;
+    if (!cell || cell.n < state.collisionMinN) return `<div class="collision-cell empty">—<small>${cell?.n ? `n=${cell.n}` : "no records"}</small></div>`;
+    const value = metricValue(cell);
+    const intensity = cell.n ? .09 + .82 * Math.sqrt(value / maxValue) : .025;
+    const selected = state.selectedCollisionPair && ((state.selectedCollisionPair.first === first && state.selectedCollisionPair.second === second) || (state.selectedCollisionPair.first === second && state.selectedCollisionPair.second === first));
     const title = `${first} × ${second}: ${cell.n} unique collision occurrences; ${cell.serious} serious/very serious (${pct(cell.serious_share)}), 95% CI ${pct(cell.ci_low)}–${pct(cell.ci_high)}; ${cell.casualties} recorded injured/fatal people.`;
-    return `<div class="collision-cell" style="background:rgba(20,125,128,${intensity.toFixed(3)})" title="${esc(title)}"><strong>${cell.n || "—"}</strong><small>${cell.n ? `${pct(cell.serious_share)} serious` : "no records"}</small></div>`;
+    const mainValue = state.collisionMetric === "serious" ? pct(cell.serious_share) : numberFormat.format(value);
+    const subValue = state.collisionMetric === "count" ? `${pct(cell.serious_share)} serious` : state.collisionMetric === "serious" ? `n=${cell.n}` : `n=${cell.n} pairs`;
+    return `<button type="button" class="collision-cell${selected ? " selected" : ""}" data-first="${esc(first)}" data-second="${esc(second)}" style="background:rgba(20,125,128,${intensity.toFixed(3)})" aria-label="${esc(title)}"><strong>${mainValue}</strong><small>${subValue}</small></button>`;
   }).join("")}</div>`).join("");
   $("collisionMatrix").innerHTML = header + rows;
+  const metricText = state.collisionMetric === "serious" ? "serious / very serious share" : state.collisionMetric === "casualties" ? "recorded injured/fatal people" : "unique collision occurrences";
+  $("collisionLegend").innerHTML = `<span><i></i>Cell colour = ${metricText}</span><span>Minimum sample filter applies to occurrence count</span><span>Click/tap any visible cell for full details</span>`;
+  $("collisionMatrix").querySelectorAll("button[data-first]").forEach((button) => button.addEventListener("click", () => {
+    state.selectedCollisionPair = { first: button.dataset.first, second: button.dataset.second };
+    renderCollisionMatrix(matrix);
+  }));
+  if (!state.selectedCollisionPair) {
+    const first = [...eligible].sort((a, b) => b.n - a.n)[0];
+    if (first) state.selectedCollisionPair = { first: first.first, second: first.second };
+  }
+  if (state.selectedCollisionPair) renderCollisionDetail(matrix, state.selectedCollisionPair.first, state.selectedCollisionPair.second);
 }
 
 function renderPersonFlow(flow) {
@@ -595,7 +660,16 @@ function renderConsequences() {
   $("personModelN").textContent = numberFormat.format(personModel.n);
   $("personModelOutcomes").textContent = `${numberFormat.format(personModel.positive_outcomes)} · ${(100 * personModel.positive_rate).toFixed(1)}%`;
   $("personModelAuc").textContent = personModel.validation.auc.toFixed(3);
-  renderForestPlot(personModel, "personForestPlot", .1, 16);
+  renderForestPlot(personModel, "personForestPlot", .1, 16, {
+    group: state.personFactorGroup,
+    significantOnly: state.personSignificantOnly,
+    detailId: "personEffectDetail",
+    selectedLabel: state.selectedPersonEffect,
+    onSelect: (label, rerender) => {
+      state.selectedPersonEffect = label;
+      if (rerender) renderConsequences();
+    },
+  });
   renderInlineSpecification("personModelSpecification", personModel);
   $("collisionPairN").textContent = numberFormat.format(analysis.collision_pairs.collision_occurrences);
   renderCollisionMatrix(analysis.collision_pairs);
@@ -603,10 +677,50 @@ function renderConsequences() {
   $("damageModelN").textContent = numberFormat.format(damageModel.n);
   $("damageModelOutcomes").textContent = `${numberFormat.format(damageModel.positive_outcomes)} · ${(100 * damageModel.positive_rate).toFixed(1)}%`;
   $("damageModelAuc").textContent = damageModel.validation.auc.toFixed(3);
-  renderForestPlot(damageModel, "damageForestPlot", .1, 64);
+  renderForestPlot(damageModel, "damageForestPlot", .1, 64, {
+    group: state.damageFactorGroup,
+    significantOnly: state.damageSignificantOnly,
+    detailId: "damageEffectDetail",
+    selectedLabel: state.selectedDamageEffect,
+    onSelect: (label, rerender) => {
+      state.selectedDamageEffect = label;
+      if (rerender) renderConsequences();
+    },
+  });
   renderInlineSpecification("damageModelSpecification", damageModel);
   renderProfileBars($("ageDamageChart"), analysis.vessel_profile.by_age);
   renderProfileBars($("tonnageDamageChart"), analysis.vessel_profile.by_tonnage);
+}
+
+function setupDeepAnalysisControls() {
+  $("personFactorGroup").addEventListener("change", (event) => {
+    state.personFactorGroup = event.target.value;
+    state.selectedPersonEffect = null;
+    renderConsequences();
+  });
+  $("personSignificantOnly").addEventListener("change", (event) => {
+    state.personSignificantOnly = event.target.checked;
+    state.selectedPersonEffect = null;
+    renderConsequences();
+  });
+  $("collisionMetric").addEventListener("change", (event) => {
+    state.collisionMetric = event.target.value;
+    renderCollisionMatrix(state.data.analysis.collision_pairs);
+  });
+  $("collisionMinN").addEventListener("change", (event) => {
+    state.collisionMinN = Number(event.target.value);
+    renderCollisionMatrix(state.data.analysis.collision_pairs);
+  });
+  $("damageFactorGroup").addEventListener("change", (event) => {
+    state.damageFactorGroup = event.target.value;
+    state.selectedDamageEffect = null;
+    renderConsequences();
+  });
+  $("damageSignificantOnly").addEventListener("change", (event) => {
+    state.damageSignificantOnly = event.target.checked;
+    state.selectedDamageEffect = null;
+    renderConsequences();
+  });
 }
 
 function selectPattern(category, event) {
@@ -790,7 +904,7 @@ function setupBrief() {
 
 async function init() {
   try {
-    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json?v=10"), fetch("data/context.json?v=10")]);
+    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json?v=11"), fetch("data/context.json?v=11")]);
     if (!response.ok || !contextResponse.ok) throw new Error(`Data request failed: ${response.status}/${contextResponse.status}`);
     [state.data, state.contextData] = await Promise.all([response.json(), contextResponse.json()]);
     $("sourceLink").href = state.data.meta.source_url;
@@ -801,6 +915,7 @@ async function init() {
     setupTabs();
     setupEvidenceControls();
     setupContextControls();
+    setupDeepAnalysisControls();
     setupBrief();
     renderConsequences();
     renderQuality();
