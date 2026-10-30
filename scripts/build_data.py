@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,309 @@ def number(value: str | None) -> float | None:
 def integer(value: str | None) -> int:
     value_number = number(value)
     return int(value_number) if value_number is not None else 0
+
+
+def invert_matrix(matrix: list[list[float]]) -> list[list[float]]:
+    """Invert a small dense matrix with Gauss-Jordan elimination."""
+    size = len(matrix)
+    augmented = [
+        [float(value) for value in row]
+        + [1.0 if row_index == column_index else 0.0 for column_index in range(size)]
+        for row_index, row in enumerate(matrix)
+    ]
+    for column in range(size):
+        pivot = max(range(column, size), key=lambda row: abs(augmented[row][column]))
+        if abs(augmented[pivot][column]) < 1e-12:
+            raise ValueError("Singular model matrix")
+        augmented[column], augmented[pivot] = augmented[pivot], augmented[column]
+        divisor = augmented[column][column]
+        augmented[column] = [value / divisor for value in augmented[column]]
+        for row in range(size):
+            if row == column:
+                continue
+            factor = augmented[row][column]
+            augmented[row] = [
+                value - factor * pivot_value
+                for value, pivot_value in zip(augmented[row], augmented[column])
+            ]
+    return [row[size:] for row in augmented]
+
+
+def logistic_regression(
+    design: list[list[float]], outcomes: list[int], labels: list[str]
+) -> dict:
+    """Fit an unpenalised logistic model using IRLS and return interpretable effects."""
+    feature_count = len(design[0])
+    coefficients = [0.0] * feature_count
+    inverse_information: list[list[float]] | None = None
+    converged = False
+
+    for iteration in range(60):
+        probabilities = []
+        weights = []
+        working = []
+        for row, outcome in zip(design, outcomes):
+            linear = sum(value * coefficient for value, coefficient in zip(row, coefficients))
+            linear = max(-30.0, min(30.0, linear))
+            probability = 1.0 / (1.0 + math.exp(-linear))
+            weight = max(probability * (1.0 - probability), 1e-7)
+            probabilities.append(probability)
+            weights.append(weight)
+            working.append(linear + (outcome - probability) / weight)
+
+        information = [[0.0] * feature_count for _ in range(feature_count)]
+        score_target = [0.0] * feature_count
+        for row, weight, target in zip(design, weights, working):
+            for left in range(feature_count):
+                score_target[left] += row[left] * weight * target
+                for right in range(feature_count):
+                    information[left][right] += row[left] * weight * row[right]
+        for diagonal in range(feature_count):
+            information[diagonal][diagonal] += 1e-7
+        inverse_information = invert_matrix(information)
+        updated = [
+            sum(inverse_information[row][column] * score_target[column] for column in range(feature_count))
+            for row in range(feature_count)
+        ]
+        if max(abs(new - old) for new, old in zip(updated, coefficients)) < 1e-7:
+            coefficients = updated
+            converged = True
+            break
+        coefficients = updated
+
+    if inverse_information is None:
+        raise ValueError("Model did not initialise")
+
+    effects = []
+    for index, label in enumerate(labels, start=1):
+        standard_error = math.sqrt(max(inverse_information[index][index], 0.0))
+        coefficient = coefficients[index]
+        effects.append(
+            {
+                "label": label,
+                "odds_ratio": round(math.exp(coefficient), 3),
+                "ci_low": round(math.exp(coefficient - 1.96 * standard_error), 3),
+                "ci_high": round(math.exp(coefficient + 1.96 * standard_error), 3),
+            }
+        )
+
+    predictions = []
+    for row in design:
+        linear = max(-30.0, min(30.0, sum(value * coefficient for value, coefficient in zip(row, coefficients))))
+        predictions.append(1.0 / (1.0 + math.exp(-linear)))
+    ranked = sorted(zip(predictions, outcomes), key=lambda pair: pair[0])
+    positives = sum(outcomes)
+    negatives = len(outcomes) - positives
+    rank_sum = sum(rank for rank, (_, outcome) in enumerate(ranked, start=1) if outcome)
+    auc = (rank_sum - positives * (positives + 1) / 2) / (positives * negatives) if positives and negatives else 0.5
+
+    return {
+        "n": len(outcomes),
+        "positive_outcomes": positives,
+        "positive_rate": round(positives / len(outcomes), 4),
+        "auc": round(auc, 3),
+        "converged": converged,
+        "effects": effects,
+    }
+
+
+def wilson_interval(successes: int, total: int) -> tuple[float, float]:
+    if not total:
+        return (0.0, 0.0)
+    z = 1.96
+    proportion = successes / total
+    denominator = 1 + z * z / total
+    centre = (proportion + z * z / (2 * total)) / denominator
+    margin = z * math.sqrt(proportion * (1 - proportion) / total + z * z / (4 * total * total)) / denominator
+    return (max(0.0, centre - margin), min(1.0, centre + margin))
+
+
+def severity_model(occurrences: list[dict[str, str]], vessel_by_occurrence: dict[str, list[dict[str, str]]]) -> dict:
+    labels = [
+        "Night conditions",
+        "Adverse weather",
+        "Rough sea state (4+)",
+        "Multiple vessels involved",
+        "Fishing vessel involved",
+        "Recreational vessel involved",
+        "Passenger ship involved",
+        "Collision / contact",
+        "Grounding / stranding",
+        "Fire / explosion",
+        "Accident to person(s)",
+    ]
+    design: list[list[float]] = []
+    outcomes: list[int] = []
+    for occurrence in occurrences:
+        occurrence_id = clean(occurrence.get("Occurrence_Id"))
+        vessels = vessel_by_occurrence.get(occurrence_id, [])
+        categories = {clean(vessel.get("Vessel_Category_L1")).lower() for vessel in vessels}
+        ship_types = {clean(vessel.get("Ship_Craft_Type_L1")).lower() for vessel in vessels}
+        event = clean(occurrence.get("Main_Event_L1")).lower()
+        weather = clean(occurrence.get("Weather")).lower()
+        sea_state_text = clean(occurrence.get("Sea_State"))
+        try:
+            sea_state = int(sea_state_text.split()[0])
+        except (ValueError, IndexError):
+            sea_state = 0
+        features = [
+            clean(occurrence.get("Natural_Light")).lower() == "night",
+            weather in {"rain", "fog", "snow"},
+            sea_state >= 4,
+            len(vessels) > 1,
+            "fishing vessel" in categories,
+            "recreational (non commercial)" in categories,
+            "passenger ship" in ship_types,
+            event in {"collision", "contact"},
+            event == "grounding / stranding",
+            event == "fire / explosion",
+            event == "accident to person(s)",
+        ]
+        design.append([1.0] + [float(value) for value in features])
+        severity = normalise_severity(clean(occurrence.get("Occurrence_Severity")))
+        outcomes.append(int(severity in {"Serious", "Very serious"}))
+    return logistic_regression(design, outcomes, labels)
+
+
+def consequence_analysis(
+    occurrences: list[dict[str, str]],
+    vessels: list[dict[str, str]],
+    persons: list[dict[str, str]],
+    vessel_by_occurrence: dict[str, list[dict[str, str]]],
+) -> dict:
+    category_counts = Counter(clean(row.get("Vessel_Category_L1")) or "Not recorded" for row in vessels)
+    top_categories = [name for name, count in category_counts.most_common() if count >= 100]
+    top_events = [name for name, _ in Counter(clean(row.get("Main_Event_L1")) or "Not recorded" for row in occurrences).most_common(8)]
+    occurrence_lookup = {clean(row.get("Occurrence_Id")): row for row in occurrences}
+    severity_cells = []
+    for category in top_categories:
+        ids = {
+            clean(vessel.get("Occurrence_Id"))
+            for vessel in vessels
+            if (clean(vessel.get("Vessel_Category_L1")) or "Not recorded") == category
+        }
+        for event in top_events:
+            matching = [
+                occurrence_lookup[occurrence_id]
+                for occurrence_id in ids
+                if occurrence_id in occurrence_lookup
+                and (clean(occurrence_lookup[occurrence_id].get("Main_Event_L1")) or "Not recorded") == event
+            ]
+            serious_count = sum(
+                normalise_severity(clean(row.get("Occurrence_Severity"))) in {"Serious", "Very serious"}
+                for row in matching
+            )
+            low, high = wilson_interval(serious_count, len(matching))
+            severity_cells.append(
+                {
+                    "category": category,
+                    "event": event,
+                    "n": len(matching),
+                    "serious": serious_count,
+                    "share": round(serious_count / len(matching), 4) if matching else 0,
+                    "ci_low": round(low, 4),
+                    "ci_high": round(high, 4),
+                }
+            )
+
+    person_event_counts = Counter(clean(row.get("Main_Event_L1")) or "Not recorded" for row in persons)
+    flow_events = {name for name, _ in person_event_counts.most_common(5)}
+    event_person = Counter()
+    person_outcome = Counter()
+    for person in persons:
+        event = clean(person.get("Main_Event_L1")) or "Not recorded"
+        event = event if event in flow_events else "Other events"
+        person_type = clean(person.get("Affected_Person_Type")) or "Not recorded"
+        condition = clean(person.get("Physical_Condition_L1")) or "Not recorded"
+        event_person[(event, person_type)] += 1
+        person_outcome[(person_type, condition)] += 1
+    person_flow = {
+        "columns": [
+            [name for name, _ in person_event_counts.most_common(5)] + ["Other events"],
+            [name for name, _ in Counter(clean(row.get("Affected_Person_Type")) or "Not recorded" for row in persons).most_common()],
+            [name for name, _ in Counter(clean(row.get("Physical_Condition_L1")) or "Not recorded" for row in persons).most_common()],
+        ],
+        "links": [
+            *[{"source": source, "target": target, "value": value, "stage": 0} for (source, target), value in event_person.items()],
+            *[{"source": source, "target": target, "value": value, "stage": 1} for (source, target), value in person_outcome.items()],
+        ],
+    }
+
+    def vessel_band_summary(field: str, bander) -> list[dict]:
+        grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
+        for vessel in vessels:
+            grouped[bander(vessel)].append(vessel)
+        result = []
+        for band, rows in grouped.items():
+            damaged = sum(
+                clean(row.get("Loss_Of_Vessel_Damage")).lower() not in {"", "no damage"}
+                for row in rows
+            )
+            material_or_loss = sum(
+                clean(row.get("Loss_Of_Vessel_Damage")).lower().startswith("material damage")
+                or clean(row.get("Loss_Of_Vessel_Damage")).lower().startswith("loss of ship")
+                for row in rows
+            )
+            result.append(
+                {
+                    "band": band,
+                    "n": len(rows),
+                    "damage_share": round(damaged / len(rows), 4),
+                    "material_loss_share": round(material_or_loss / len(rows), 4),
+                }
+            )
+        return result
+
+    event_years = [integer(row.get("Year_Reported")) for row in occurrences if integer(row.get("Year_Reported"))]
+    reference_year = max(event_years) if event_years else datetime.now().year
+
+    def age_band(vessel: dict[str, str]) -> str:
+        built = integer(vessel.get("Year_Built"))
+        if built < 1850 or built > reference_year:
+            return "Unknown"
+        age = reference_year - built
+        if age < 10:
+            return "<10 years"
+        if age < 20:
+            return "10–19 years"
+        if age < 30:
+            return "20–29 years"
+        if age < 40:
+            return "30–39 years"
+        return "40+ years"
+
+    def tonnage_band(vessel: dict[str, str]) -> str:
+        tonnage = number(vessel.get("GT_Gross_Tonnage")) or 0
+        if tonnage <= 0:
+            return "Unknown / zero"
+        if tonnage < 100:
+            return "<100 GT"
+        if tonnage < 1000:
+            return "100–999 GT"
+        if tonnage < 10000:
+            return "1k–9,999 GT"
+        if tonnage < 50000:
+            return "10k–49,999 GT"
+        return "50k+ GT"
+
+    age_order = ["<10 years", "10–19 years", "20–29 years", "30–39 years", "40+ years", "Unknown"]
+    tonnage_order = ["<100 GT", "100–999 GT", "1k–9,999 GT", "10k–49,999 GT", "50k+ GT", "Unknown / zero"]
+    vessel_profile = {
+        "by_age": sorted(vessel_band_summary("age", age_band), key=lambda row: age_order.index(row["band"])),
+        "by_tonnage": sorted(vessel_band_summary("tonnage", tonnage_band), key=lambda row: tonnage_order.index(row["band"])),
+    }
+
+    return {
+        "severity_matrix": {"categories": top_categories, "events": top_events, "cells": severity_cells},
+        "severity_model": severity_model(occurrences, vessel_by_occurrence),
+        "person_flow": person_flow,
+        "vessel_profile": vessel_profile,
+        "notes": {
+            "model": "Multivariable logistic regression of serious/very serious classification among reported occurrences. Odds ratios are adjusted for all displayed factors.",
+            "person": "Person-level flows describe affected-person records and do not measure population risk.",
+            "vessel": "Damage shares are conditional on vessels appearing in the published occurrence records.",
+        },
+    }
 
 
 def normalise_severity(value: str) -> str:
@@ -202,6 +506,7 @@ def main() -> None:
             "unmatched_people": unmatched_persons,
             "missingness": missingness,
         },
+        "analysis": consequence_analysis(occurrences, vessels, persons, vessel_by_occurrence),
         "records": records,
     }
 

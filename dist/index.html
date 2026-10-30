@@ -80,8 +80,9 @@
         <nav class="tab-nav" aria-label="Dashboard sections">
           <button class="tab active" data-tab="overview">01&nbsp;&nbsp;Overview</button>
           <button class="tab" data-tab="patterns">02&nbsp;&nbsp;Pattern explorer</button>
-          <button class="tab" data-tab="evidence">03&nbsp;&nbsp;Evidence explorer</button>
-          <button class="tab" data-tab="quality">04&nbsp;&nbsp;Data confidence</button>
+          <button class="tab" data-tab="consequences">03&nbsp;&nbsp;Severity &amp; consequences</button>
+          <button class="tab" data-tab="evidence">04&nbsp;&nbsp;Evidence explorer</button>
+          <button class="tab" data-tab="quality">05&nbsp;&nbsp;Data confidence</button>
         </nav>
 
         <section class="tab-panel active" id="overviewPanel">
@@ -155,6 +156,56 @@
               <div class="insight-row caution"><span>Use caution</span><p>Comparing category counts where reporting practices, operating environments and fleet exposure differ.</p></div>
               <div class="insight-row stop"><span>Cannot support</span><p>Causal claims or true accident-rate rankings without a denominator and an appropriate research design.</p></div>
             </article>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="consequencesPanel">
+          <div class="section-intro consequence-intro">
+            <div><span class="eyebrow">Association, not causation</span><h2>Severity &amp; human consequences</h2></div>
+            <p>This view moves beyond occurrence counts by retaining vessel- and person-level records. Results remain conditional on a reported occurrence and are not exposure-adjusted risk estimates.</p>
+          </div>
+
+          <div class="analysis-banner">
+            <div><span>MODEL SAMPLE</span><strong id="modelSample">—</strong><small>reported occurrences</small></div>
+            <div><span>SERIOUS OUTCOMES</span><strong id="modelOutcomes">—</strong><small>serious / very serious</small></div>
+            <div><span>DISCRIMINATION</span><strong id="modelAuc">—</strong><small>in-sample ROC AUC</small></div>
+            <p><strong>Reading the model:</strong> an odds ratio above 1 indicates higher adjusted odds of a serious classification among reported occurrences. Confidence intervals crossing 1 are not statistically distinguishable from no association at the 95% level.</p>
+          </div>
+
+          <div class="dashboard-grid consequence-grid">
+            <article class="panel consequence-matrix-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Conditional outcome share</span><h2>Serious classification by event × vessel category</h2></div><span class="panel-note">95% Wilson intervals in tooltip</span></div>
+              <div class="severity-matrix-scroll"><div id="severityMatrix" class="severity-matrix"></div></div>
+              <p class="chart-footnote">Each vessel category includes occurrences involving at least one vessel in that category. Multi-vessel occurrences may therefore appear in more than one row.</p>
+            </article>
+
+            <article class="panel model-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Adjusted associations</span><h2>Odds of serious / very serious classification</h2></div><span class="panel-note">Multivariable logistic regression</span></div>
+              <div class="forest-axis"><span>Lower odds</span><strong>1.0</strong><span>Higher odds</span></div>
+              <div id="forestPlot" class="forest-plot"></div>
+              <p class="chart-footnote">All displayed factors are included simultaneously. Estimates describe association, not causal effects or accident probability.</p>
+            </article>
+
+            <article class="panel person-flow-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Person-level pathway</span><h2>Occurrence event → person type → recorded outcome</h2></div><span class="panel-note">3,040 affected-person records</span></div>
+              <div id="personFlow" class="person-flow" aria-label="Flow diagram of events, affected people and outcomes"></div>
+              <p class="chart-footnote">Band width represents affected-person records. The diagram describes the published records and is not a population injury rate.</p>
+            </article>
+
+            <article class="panel vessel-profile-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Vessel condition</span><h2>Recorded damage by vessel age</h2></div><span class="panel-note">All vessel records</span></div>
+              <div id="ageDamageChart" class="profile-bars"></div>
+            </article>
+
+            <article class="panel vessel-profile-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Vessel condition</span><h2>Recorded damage by gross tonnage</h2></div><span class="panel-note">All vessel records</span></div>
+              <div id="tonnageDamageChart" class="profile-bars"></div>
+            </article>
+          </div>
+
+          <div class="model-boundary">
+            <strong>Decision boundary</strong>
+            <p>The model asks which characteristics are associated with severity <em>after an occurrence has entered the MAIB dataset</em>. Without fleet size, voyages, distance travelled or operating hours, it cannot identify which vessel group has the highest accident risk.</p>
           </div>
         </section>
 

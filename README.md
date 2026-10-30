@@ -7,6 +7,8 @@ An interactive portfolio prototype that turns public UK Marine Accident Investig
 - relational integration of occurrence, vessel and affected-person records;
 - automatic completeness and relationship-integrity checks;
 - interactive temporal, geographic and categorical analysis;
+- a multivariable logistic model of serious/very serious classification with adjusted odds ratios and 95% confidence intervals;
+- person-level event-to-outcome flows and vessel-level damage profiles by age and gross tonnage;
 - explicit separation of reported occurrence counts from exposure-adjusted risk;
 - source-linked investigation evidence;
 - an automatically assembled, print-ready evidence brief.
@@ -40,6 +42,8 @@ python3 -m http.server 8000 --directory dist
 ## Methodological boundary
 
 The dashboard describes reported occurrences. It does not estimate the probability that a vessel will experience an accident. Comparisons of raw counts by vessel category require an exposure denominator such as fleet size, voyages, distance travelled or operating hours before they can be interpreted as risk rates.
+
+The severity model is conditional on an occurrence appearing in the MAIB dataset. Its adjusted odds ratios describe associations with the published severity classification; they are not causal effects and should not be interpreted as accident-risk estimates.
 
 ## Roadmap
 

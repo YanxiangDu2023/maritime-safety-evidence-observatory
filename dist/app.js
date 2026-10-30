@@ -282,6 +282,104 @@ function renderPatterns() {
   if (state.selectedPattern) updatePatternDetail();
 }
 
+function renderSeverityMatrix(matrix) {
+  const cells = matrix.cells;
+  const maxShare = Math.max(...cells.filter((cell) => cell.n >= 10).map((cell) => cell.share), .01);
+  const header = `<div class="severity-matrix-row severity-matrix-header"><div></div>${matrix.events.map((event) => `<div>${esc(event)}</div>`).join("")}</div>`;
+  const rows = matrix.categories.map((category) => {
+    const categoryCells = matrix.events.map((event) => cells.find((cell) => cell.category === category && cell.event === event));
+    return `<div class="severity-matrix-row"><div class="severity-matrix-label">${esc(category)}</div>${categoryCells.map((cell) => {
+      const lowSample = cell.n < 10;
+      const intensity = lowSample ? .04 : .12 + .78 * Math.sqrt(cell.share / maxShare);
+      const title = `${category} · ${cell.event}: ${pct(cell.share)} serious/very serious (${cell.serious}/${cell.n}); 95% CI ${pct(cell.ci_low)}–${pct(cell.ci_high)}`;
+      return `<div class="severity-cell${lowSample ? " low-sample" : ""}" style="background:rgba(183,67,61,${intensity.toFixed(2)})" title="${esc(title)}"><strong>${cell.n ? pct(cell.share) : "—"}</strong><small>n=${numberFormat.format(cell.n)}</small></div>`;
+    }).join("")}</div>`;
+  }).join("");
+  $("severityMatrix").innerHTML = header + rows;
+}
+
+function renderForestPlot(model) {
+  const min = Math.log(.25), max = Math.log(16);
+  const position = (value) => 100 * (Math.log(Math.max(.25, Math.min(16, value))) - min) / (max - min);
+  $("forestPlot").innerHTML = model.effects.map((effect) => {
+    const left = position(effect.ci_low);
+    const right = position(effect.ci_high);
+    const point = position(effect.odds_ratio);
+    const significant = effect.ci_low > 1 || effect.ci_high < 1;
+    return `<div class="forest-row">
+      <span class="forest-label">${esc(effect.label)}</span>
+      <div class="forest-scale"><i class="forest-reference"></i><span class="forest-ci ${significant ? "significant" : ""}" style="left:${left}%;width:${Math.max(1, right - left)}%"></span><b style="left:${point}%"></b></div>
+      <span class="forest-value">${effect.odds_ratio.toFixed(2)} <small>${effect.ci_low.toFixed(2)}–${effect.ci_high.toFixed(2)}</small></span>
+    </div>`;
+  }).join("");
+}
+
+function renderPersonFlow(flow) {
+  const width = 1100, height = 500, nodeWidth = 13, padding = 11;
+  const colors = [palette.teal, palette.gold, palette.coral];
+  const totals = flow.columns.map((column, stage) => column.reduce((sum, name) => {
+    const links = flow.links.filter((link) => stage === 0 ? link.stage === 0 && link.source === name : stage === 1 ? link.stage === 0 && link.target === name : link.stage === 1 && link.target === name);
+    return sum + links.reduce((subtotal, link) => subtotal + link.value, 0);
+  }, 0));
+  const scale = Math.min(...flow.columns.map((column, stage) => (height - padding * (column.length - 1)) / Math.max(totals[stage], 1)));
+  const xPositions = [245, 565, 885];
+  const nodes = new Map();
+  flow.columns.forEach((column, stage) => {
+    const values = column.map((name) => flow.links.filter((link) => stage === 0 ? link.stage === 0 && link.source === name : stage === 1 ? link.stage === 0 && link.target === name : link.stage === 1 && link.target === name).reduce((sum, link) => sum + link.value, 0));
+    const used = values.reduce((sum, value) => sum + value * scale, 0) + padding * (column.length - 1);
+    let y = (height - used) / 2;
+    column.forEach((name, index) => {
+      const node = { name, stage, x: xPositions[stage], y, height: Math.max(2, values[index] * scale), incoming: 0, outgoing: 0, value: values[index] };
+      nodes.set(`${stage}|${name}`, node);
+      y += node.height + padding;
+    });
+  });
+  const links = [...flow.links].sort((a, b) => b.value - a.value).map((link) => {
+    const source = nodes.get(`${link.stage}|${link.source}`);
+    const target = nodes.get(`${link.stage + 1}|${link.target}`);
+    const thickness = Math.max(1, link.value * scale);
+    const sourceY = source.y + source.outgoing + thickness / 2;
+    const targetY = target.y + target.incoming + thickness / 2;
+    source.outgoing += thickness;
+    target.incoming += thickness;
+    const startX = source.x + nodeWidth;
+    const endX = target.x;
+    const middle = (startX + endX) / 2;
+    return `<path d="M${startX},${sourceY} C${middle},${sourceY} ${middle},${targetY} ${endX},${targetY}" fill="none" stroke="${colors[link.stage]}" stroke-opacity=".2" stroke-width="${thickness}"><title>${esc(link.source)} → ${esc(link.target)}: ${numberFormat.format(link.value)}</title></path>`;
+  }).join("");
+  const nodeMarkup = [...nodes.values()].map((node) => {
+    const labelX = node.stage === 0 ? node.x - 8 : node.x + nodeWidth + 8;
+    const anchor = node.stage === 0 ? "end" : "start";
+    return `<rect x="${node.x}" y="${node.y}" width="${nodeWidth}" height="${node.height}" rx="2" fill="${colors[node.stage]}"><title>${esc(node.name)}: ${numberFormat.format(node.value)}</title></rect><text x="${labelX}" y="${node.y + node.height / 2 + 3}" text-anchor="${anchor}">${esc(node.name)} <tspan>${numberFormat.format(node.value)}</tspan></text>`;
+  }).join("");
+  const headings = ["OCCURRENCE EVENT", "PERSON TYPE", "RECORDED OUTCOME"].map((heading, index) => `<text class="flow-heading" x="${xPositions[index]}" y="12">${heading}</text>`).join("");
+  $("personFlow").innerHTML = `<svg viewBox="0 0 ${width} ${height + 20}" role="img" aria-label="Affected-person record flows">${headings}${links}${nodeMarkup}</svg>`;
+}
+
+function renderProfileBars(element, rows) {
+  const max = Math.max(...rows.map((row) => row.damage_share), .01);
+  element.innerHTML = `<div class="profile-legend"><span><i></i>Any recorded damage</span><span><i></i>Material damage / vessel loss</span></div>${rows.map((row) => `
+    <div class="profile-row">
+      <span>${esc(row.band)}<small>n=${numberFormat.format(row.n)}</small></span>
+      <div class="profile-track"><i style="width:${100 * row.damage_share / max}%"></i><b style="width:${100 * row.material_loss_share / max}%"></b></div>
+      <strong>${pct(row.damage_share)}</strong>
+    </div>`).join("")}`;
+}
+
+function renderConsequences() {
+  const analysis = state.data.analysis;
+  if (!analysis) return;
+  const model = analysis.severity_model;
+  $("modelSample").textContent = numberFormat.format(model.n);
+  $("modelOutcomes").textContent = `${numberFormat.format(model.positive_outcomes)} · ${(100 * model.positive_rate).toFixed(1)}%`;
+  $("modelAuc").textContent = model.auc.toFixed(3);
+  renderSeverityMatrix(analysis.severity_matrix);
+  renderForestPlot(model);
+  renderPersonFlow(analysis.person_flow);
+  renderProfileBars($("ageDamageChart"), analysis.vessel_profile.by_age);
+  renderProfileBars($("tonnageDamageChart"), analysis.vessel_profile.by_tonnage);
+}
+
 function selectPattern(category, event) {
   state.selectedPattern = { category, event };
   renderPatterns();
@@ -374,7 +472,7 @@ function switchTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab}Panel`));
-  const titles = { overview: "Reported occurrence overview", patterns: "Pattern explorer", evidence: "Investigation evidence", quality: "Data confidence" };
+  const titles = { overview: "Reported occurrence overview", patterns: "Pattern explorer", consequences: "Severity & human consequences", evidence: "Investigation evidence", quality: "Data confidence" };
   $("pageTitle").textContent = titles[tab];
   if (tab === "overview") setTimeout(() => state.map?.invalidateSize(), 20);
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -436,6 +534,7 @@ async function init() {
     setupTabs();
     setupEvidenceControls();
     setupBrief();
+    renderConsequences();
     renderQuality();
     applyFilters();
     $("mobileMenu").addEventListener("click", () => $("sidebar").classList.toggle("open"));
