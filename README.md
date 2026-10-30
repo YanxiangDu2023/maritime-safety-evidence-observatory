@@ -6,6 +6,44 @@ An interactive portfolio prototype that turns public UK Marine Accident Investig
 
 The published snapshot contains 9,063 occurrence records, 9,830 linked vessel records and 3,040 affected-person records covering 2020–2026. The latest year is explicitly marked as partial.
 
+## Dashboard tour
+
+### 1. Portfolio overview
+
+![Maritime Safety Evidence Observatory overview](docs/images/dashboard-overview.jpg)
+
+The landing view establishes the analytical scope before showing detail. It reports the number of occurrences, linked vessels, injured people and deaths/presumed deaths, then combines a yearly trend with mapped occurrence locations. The latest year is visually marked as partial, and the interpretation banner makes clear that the figures are reported occurrences rather than exposure-adjusted accident rates. Global filters update the descriptive views by year, event, vessel category and severity.
+
+### 2. Exposure and operating environment
+
+![Vessel-density and occurrence context map](docs/images/dashboard-context-map.jpg)
+
+This view overlays annual MAIB occurrence locations on the official EMODnet AIS vessel-density WMS. The context year synchronises the traffic layer, occurrence sample and Department for Transport port-freight comparison. Bathymetry and individual AIS vessel-type layers are also selectable. These layers are deliberately described as operating context: they are not combined into a risk rate unless vessel type, geography and time coverage are compatible.
+
+### 3. Occurrence severity analysis
+
+![Occurrence severity matrix and adjusted odds-ratio model](docs/images/dashboard-severity-model.jpg)
+
+The severity section first shows the conditional serious/very-serious share for event × vessel-category combinations, with sample sizes and Wilson 95% intervals. Beside it, a multivariable logistic model reports adjusted odds ratios and confidence intervals for environmental conditions, vessel involvement, event type and calendar year. The model is fitted to the complete published snapshot because changing filters would require refitting it.
+
+### 4. Human-consequence pathways
+
+![Affected-person Sankey flow and person-level analysis](docs/images/dashboard-human-consequences.jpg)
+
+The Sankey diagram retains all 3,040 affected-person records and traces how occurrence events connect to crew, passengers and other people, then to injured, uninjured, confirmed-death and presumed-death outcomes. Below the flow, a person-level logistic model examines serious injury or death while adjusting for age, gender, person type, duty status, vessel category and event. People from the same occurrence remain in the same validation fold.
+
+### 5. Collision pairing matrix
+
+![Collision vessel-category pairing matrix](docs/images/dashboard-collision-matrix.jpg)
+
+The matrix preserves both sides of multi-vessel collisions instead of reducing each occurrence to a single “main vessel”. Each upper-triangle cell counts unique collision occurrences containing the selected category pair and can switch between occurrence count, serious share and recorded casualties. A minimum sample control and fixed detail panel expose the denominator and Wilson interval, discouraging conclusions based on very small cells.
+
+### 6. Vessel damage model
+
+![Vessel material-damage and loss model](docs/images/dashboard-vessel-damage.jpg)
+
+The vessel-level model uses 9,830 linked vessel records to analyse material damage or vessel loss. Vessel age and log10 gross tonnage are continuous predictors; vessel category, event, multi-vessel status and calendar year are adjusted simultaneously. Validation is grouped by occurrence, confidence intervals use occurrence-clustered standard errors, and the dashboard displays average precision, sensitivity, precision and specificity alongside ROC AUC.
+
 ## What it demonstrates
 
 - relational integration of occurrence, vessel and affected-person records;
