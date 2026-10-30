@@ -10,6 +10,11 @@ BUILD = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(BUILD)
 
+REFRESH_SPEC = importlib.util.spec_from_file_location("automated_refresh", ROOT / "scripts" / "automated_refresh.py")
+REFRESH = importlib.util.module_from_spec(REFRESH_SPEC)
+assert REFRESH_SPEC.loader
+REFRESH_SPEC.loader.exec_module(REFRESH)
+
 
 class PersonClassificationTests(unittest.TestCase):
     def test_injured_excludes_no_injury(self):
@@ -27,6 +32,18 @@ class StatisticalHelperTests(unittest.TestCase):
         low, high = BUILD.wilson_interval(25, 100)
         self.assertLess(low, 0.25)
         self.assertGreater(high, 0.25)
+
+
+class AutomatedRefreshTests(unittest.TestCase):
+    def test_build_timestamp_does_not_trigger_publication(self):
+        first = {"meta": {"built_at": "one", "year_max": 2026}, "records": [1]}
+        second = {"meta": {"built_at": "two", "year_max": 2026}, "records": [1]}
+        self.assertEqual(REFRESH.comparable_dashboard(first), REFRESH.comparable_dashboard(second))
+
+    def test_analytical_change_triggers_publication(self):
+        first = {"meta": {"built_at": "one"}, "records": [1]}
+        second = {"meta": {"built_at": "two"}, "records": [1, 2]}
+        self.assertNotEqual(REFRESH.comparable_dashboard(first), REFRESH.comparable_dashboard(second))
 
 
 class BuiltArtifactTests(unittest.TestCase):

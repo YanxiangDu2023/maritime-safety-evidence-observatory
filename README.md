@@ -56,6 +56,21 @@ python3 -m unittest discover -s tests -v
 node --check dist/app.js
 ```
 
+## Scheduled refresh
+
+The production Site is checked on the first Monday of each month. The safe
+refresh entry point downloads the official sources, rebuilds the analytical
+artifacts and runs all release checks:
+
+```bash
+python3 scripts/automated_refresh.py
+```
+
+Its JSON result sets `publish_required` to `true` only when analytical content
+has changed. A build timestamp alone does not trigger publication. If download,
+schema validation, modelling or tests fail, the previous browser artifacts are
+restored and the live Site must remain on its last successful version.
+
 ## Run locally
 
 Serve the project root with a static HTTP server and open `dist/`:
