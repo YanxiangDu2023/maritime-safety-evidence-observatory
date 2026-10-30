@@ -7,6 +7,7 @@ An interactive portfolio prototype that turns public UK Marine Accident Investig
 - relational integration of occurrence, vessel and affected-person records;
 - automatic completeness and relationship-integrity checks;
 - interactive temporal, geographic and categorical analysis;
+- an interactive 2D/3D hexagonal spatial atlas with filter-aware aggregation, selectable height metrics and severity-share colour encoding;
 - a multivariable logistic model of serious/very serious classification with adjusted odds ratios and 95% confidence intervals;
 - person-level event-to-outcome flows and vessel-level damage profiles by age and gross tonnage;
 - explicit separation of reported occurrence counts from exposure-adjusted risk;
@@ -64,8 +65,9 @@ See [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for metric definitions, model v
 
 ## Roadmap
 
+- temporally compatible EMODnet vessel-density exposure grids;
+- Copernicus wave/current reanalysis and bathymetry context layers;
+- port-arrival denominators for port-area comparisons;
 - page-level extraction from published investigation reports;
 - citation validation and retrieval evaluation;
-- exposure-denominator integration;
-- regression analysis of severity conditional on a reported occurrence;
 - versioned data refresh and reproducibility report.

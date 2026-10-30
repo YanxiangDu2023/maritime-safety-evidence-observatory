@@ -81,10 +81,11 @@
 
         <nav class="tab-nav" aria-label="Dashboard sections">
           <button class="tab active" data-tab="overview">01&nbsp;&nbsp;Overview</button>
-          <button class="tab" data-tab="patterns">02&nbsp;&nbsp;Pattern explorer</button>
-          <button class="tab" data-tab="consequences">03&nbsp;&nbsp;Severity &amp; consequences</button>
-          <button class="tab" data-tab="evidence">04&nbsp;&nbsp;Evidence explorer</button>
-          <button class="tab" data-tab="quality">05&nbsp;&nbsp;Data confidence</button>
+          <button class="tab" data-tab="spatial">02&nbsp;&nbsp;3D spatial atlas</button>
+          <button class="tab" data-tab="patterns">03&nbsp;&nbsp;Pattern explorer</button>
+          <button class="tab" data-tab="consequences">04&nbsp;&nbsp;Severity &amp; consequences</button>
+          <button class="tab" data-tab="evidence">05&nbsp;&nbsp;Evidence explorer</button>
+          <button class="tab" data-tab="quality">06&nbsp;&nbsp;Data confidence</button>
         </nav>
 
         <section class="tab-panel active" id="overviewPanel">
@@ -128,6 +129,56 @@
               <div class="panel-header"><div><span class="panel-kicker">Outcome classification</span><h2>Severity mix</h2></div><span class="panel-note">Reported classification</span></div>
               <div class="donut-layout"><div class="chart-wrap donut svg-chart" id="severityChart"></div><div class="legend-list" id="severityLegend"></div></div>
             </article>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="spatialPanel">
+          <div class="section-intro spatial-intro">
+            <div><span class="eyebrow">Geographic composition · experimental view</span><h2>3D maritime occurrence landscape</h2></div>
+            <p>Hexagonal columns aggregate reported occurrence coordinates. Height represents the selected metric; colour represents the share classified serious or very serious.</p>
+          </div>
+
+          <div class="method-banner spatial-boundary">
+            <span class="method-icon">i</span>
+            <div><strong>This is not a risk surface.</strong> The map currently has no vessel-traffic denominator. High columns identify concentrations in the published MAIB records, not the most dangerous waters.</div>
+            <button data-tab-jump="quality">Read interpretation limits →</button>
+          </div>
+
+          <div class="atlas-toolbar" aria-label="Spatial atlas controls">
+            <label><span>Column height</span><select id="atlasMetric"><option value="occurrences">Reported occurrences</option><option value="serious">Serious occurrences</option><option value="people">Affected people</option></select></label>
+            <label><span>Aggregation</span><select id="atlasResolution"><option value="coarse">Regional · 55 km approx.</option><option value="medium" selected>Local · 30 km approx.</option><option value="fine">Detailed · 18 km approx.</option></select></label>
+            <div class="view-toggle" role="group" aria-label="Map dimension"><button id="atlas2d">2D</button><button id="atlas3d" class="active">3D</button></div>
+            <button class="secondary-button" id="atlasReset">Reset map</button>
+          </div>
+
+          <div class="atlas-layout">
+            <article class="panel atlas-map-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Interactive spatial aggregation</span><h2>Reported occurrence concentration</h2></div><span class="panel-note" id="atlasMapNote">Preparing coordinates…</span></div>
+              <div id="atlasMap" aria-label="Interactive three-dimensional hexagonal map of reported maritime occurrences"><canvas id="atlasCanvas"></canvas><div class="atlas-tooltip" id="atlasTooltip" hidden></div></div>
+              <div class="atlas-legend"><span>Lower serious share</span><i></i><span>Higher serious share</span><small>Column height uses a square-root scale so dense cells do not obscure neighbouring areas.</small></div>
+            </article>
+
+            <aside class="atlas-side">
+              <article class="panel atlas-summary">
+                <span class="panel-kicker">Visible spatial sample</span>
+                <div><strong id="atlasCoordinateCount">—</strong><span>located records</span></div>
+                <div><strong id="atlasCellCount">—</strong><span>occupied cells</span></div>
+                <div><strong id="atlasSeriousShare">—</strong><span>serious share</span></div>
+              </article>
+              <article class="panel atlas-ranking">
+                <div class="panel-header"><div><span class="panel-kicker">Highest columns</span><h2>Leading map cells</h2></div></div>
+                <div id="atlasTopCells"></div>
+              </article>
+              <article class="panel context-layers">
+                <span class="panel-kicker">Exposure roadmap</span>
+                <h2>Context layers</h2>
+                <p><strong>Current:</strong> MAIB occurrence coordinates.</p>
+                <p><span>Next</span> EMODnet vessel-density grids</p>
+                <p><span>Next</span> Copernicus wave and current reanalysis</p>
+                <p><span>Next</span> Bathymetry and port-activity denominators</p>
+                <small>External layers will only be combined where geography, vessel type and time coverage are compatible.</small>
+              </article>
+            </aside>
           </div>
         </section>
 

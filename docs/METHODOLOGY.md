@@ -22,6 +22,12 @@ The multivariable logistic regression reports adjusted odds ratios and Wald 95% 
 
 The model is conditional on an occurrence entering the MAIB dataset. It does not estimate accident probability, population risk, or causal effects.
 
+## Spatial atlas
+
+The spatial atlas aggregates records with valid coordinates into approximate latitude/longitude grid cells at three user-selectable resolutions. Column height uses a square-root scale for reported occurrences, serious occurrences or affected-person counts. Cell colour represents the observed serious/very serious share.
+
+The atlas is a map of published-record concentration, not an exposure-adjusted risk surface. Grid-cell boundaries are analytical approximations rather than navigational or administrative boundaries. Future traffic-density, ocean-condition and port-activity layers should only be joined where their time period, geography and vessel classification are compatible with the occurrence records.
+
 ## Vessel profiles
 
 - Vessel age is calculated as occurrence year minus year built.

@@ -8,6 +8,13 @@ const state = {
   selectedPattern: null,
   map: null,
   mapLayer: null,
+  atlasMap: null,
+  atlasCanvas: null,
+  atlasCells: [],
+  atlasCellsProjected: [],
+  atlasMode: "3d",
+  atlasMetric: "occurrences",
+  atlasResolution: "medium",
 };
 
 const palette = {
@@ -127,6 +134,7 @@ function applyFilters() {
     $("scopeLabel").textContent = "in scope";
   }
   renderOverview();
+  renderSpatialAtlas();
   renderPatterns();
   renderEvidence();
 }
@@ -284,6 +292,147 @@ function renderMap() {
   } else {
     state.map.setView([54.4, -3.4], 4);
   }
+}
+
+const atlasResolutions = {
+  coarse: { lat: .50, lon: .80 },
+  medium: { lat: .28, lon: .46 },
+  fine: { lat: .17, lon: .28 },
+};
+
+function initializeAtlas() {
+  if (state.atlasMap) return;
+  state.atlasMap = L.map("atlasMap", { preferCanvas: true, zoomControl: false, minZoom: 3 }).setView([54.4, -3.4], 5);
+  L.control.zoom({ position: "bottomright" }).addTo(state.atlasMap);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 15, attribution: "© OpenStreetMap" }).addTo(state.atlasMap);
+  state.atlasCanvas = $("atlasCanvas");
+  state.atlasMap.on("move zoom resize", drawAtlas);
+  state.atlasCanvas.addEventListener("mousemove", atlasPointerMove);
+  state.atlasCanvas.addEventListener("mouseleave", () => { $("atlasTooltip").hidden = true; });
+}
+
+function aggregateAtlasCells(records) {
+  const step = atlasResolutions[state.atlasResolution];
+  const cells = new Map();
+  records.filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lon)).forEach((row) => {
+    const latIndex = Math.round(row.lat / step.lat);
+    const lonIndex = Math.round(row.lon / step.lon);
+    const key = `${latIndex}:${lonIndex}`;
+    const cell = cells.get(key) || { lat: latIndex * step.lat, lon: lonIndex * step.lon, occurrences: 0, serious: 0, people: 0, events: {} };
+    cell.occurrences += 1;
+    cell.serious += serious(row) ? 1 : 0;
+    cell.people += row.affected_people || 0;
+    cell.events[row.event] = (cell.events[row.event] || 0) + 1;
+    cells.set(key, cell);
+  });
+  return [...cells.values()].map((cell) => ({ ...cell, seriousShare: cell.serious / cell.occurrences, leadingEvent: topEntries(cell.events, 1)[0]?.[0] || "Not recorded" }));
+}
+
+function atlasColor(share, alpha = .88) {
+  const t = Math.max(0, Math.min(1, share / .35));
+  const from = [20, 125, 128], to = [183, 67, 61];
+  const rgb = from.map((value, index) => Math.round(value + (to[index] - value) * t));
+  return `rgba(${rgb.join(",")},${alpha})`;
+}
+
+function hexPoints(x, y, radius) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const angle = Math.PI / 3 * index + Math.PI / 6;
+    return [x + radius * Math.cos(angle), y + radius * Math.sin(angle)];
+  });
+}
+
+function canvasPolygon(ctx, points, fill, stroke = null) {
+  ctx.beginPath();
+  points.forEach(([x, y], index) => index ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+}
+
+function drawAtlas() {
+  if (!state.atlasMap || !state.atlasCanvas) return;
+  const mapSize = state.atlasMap.getSize();
+  const ratio = window.devicePixelRatio || 1;
+  const canvas = state.atlasCanvas;
+  if (canvas.width !== mapSize.x * ratio || canvas.height !== mapSize.y * ratio) {
+    canvas.width = mapSize.x * ratio;
+    canvas.height = mapSize.y * ratio;
+    canvas.style.width = `${mapSize.x}px`;
+    canvas.style.height = `${mapSize.y}px`;
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, mapSize.x, mapSize.y);
+  const maxValue = Math.max(...state.atlasCells.map((cell) => cell[state.atlasMetric]), 1);
+  const zoom = state.atlasMap.getZoom();
+  const radius = Math.max(5, Math.min(19, 6 + (zoom - 4) * 2.5));
+  const projected = state.atlasCells.map((cell) => {
+    const point = state.atlasMap.latLngToContainerPoint([cell.lat, cell.lon]);
+    const value = cell[state.atlasMetric];
+    const height = state.atlasMode === "3d" ? 8 + 104 * Math.sqrt(value / maxValue) : 0;
+    return { ...cell, x: point.x, y: point.y, value, radius, height };
+  }).filter((cell) => cell.x > -40 && cell.x < mapSize.x + 40 && cell.y > -130 && cell.y < mapSize.y + 40)
+    .sort((a, b) => a.y - b.y);
+  projected.forEach((cell) => {
+    const base = hexPoints(cell.x, cell.y, radius);
+    if (state.atlasMode === "3d") {
+      const top = base.map(([x, y]) => [x, y - cell.height]);
+      [1, 2, 3].forEach((index) => {
+        const next = (index + 1) % 6;
+        canvasPolygon(ctx, [top[index], top[next], base[next], base[index]], atlasColor(cell.seriousShare, index === 2 ? .78 : .62));
+      });
+      canvasPolygon(ctx, top, atlasColor(cell.seriousShare, .94), "rgba(255,255,255,.45)");
+    } else {
+      const size = radius * (.55 + .75 * Math.sqrt(cell.value / maxValue));
+      canvasPolygon(ctx, hexPoints(cell.x, cell.y, size), atlasColor(cell.seriousShare, .78), "rgba(255,255,255,.55)");
+    }
+  });
+  state.atlasCellsProjected = projected;
+}
+
+function atlasPointerMove(event) {
+  const rect = state.atlasCanvas.getBoundingClientRect();
+  const x = event.clientX - rect.left, y = event.clientY - rect.top;
+  const nearest = state.atlasCellsProjected.map((cell) => ({ cell, distance: Math.hypot(x - cell.x, y - (cell.y - cell.height)) })).sort((a, b) => a.distance - b.distance)[0];
+  const tooltip = $("atlasTooltip");
+  if (!nearest || nearest.distance > 28) { tooltip.hidden = true; return; }
+  const cell = nearest.cell;
+  tooltip.hidden = false;
+  tooltip.style.left = `${Math.min(x + 14, rect.width - 220)}px`;
+  tooltip.style.top = `${Math.max(8, y - 70)}px`;
+  tooltip.innerHTML = `<strong>${numberFormat.format(cell.occurrences)} occurrences</strong><span>${numberFormat.format(cell.serious)} serious · ${pct(cell.seriousShare)}</span><span>${numberFormat.format(cell.people)} affected people</span><small>Leading event: ${esc(cell.leadingEvent)}</small>`;
+}
+
+function renderSpatialAtlas() {
+  if (!state.data) return;
+  const located = state.filtered.filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lon));
+  state.atlasCells = aggregateAtlasCells(located);
+  const metricLabels = { occurrences: "occurrences", serious: "serious occurrences", people: "affected people" };
+  $("atlasCoordinateCount").textContent = numberFormat.format(located.length);
+  $("atlasCellCount").textContent = numberFormat.format(state.atlasCells.length);
+  $("atlasSeriousShare").textContent = located.length ? pct(located.filter(serious).length / located.length) : "—";
+  $("atlasMapNote").textContent = `${numberFormat.format(located.length)} located records · height = ${metricLabels[state.atlasMetric]}`;
+  const top = [...state.atlasCells].sort((a, b) => b[state.atlasMetric] - a[state.atlasMetric]).slice(0, 6);
+  $("atlasTopCells").innerHTML = top.map((cell, index) => `<button data-lat="${cell.lat}" data-lon="${cell.lon}"><span>${String(index + 1).padStart(2, "0")}</span><div><strong>${numberFormat.format(cell[state.atlasMetric])} ${metricLabels[state.atlasMetric]}</strong><small>${cell.lat.toFixed(2)}°, ${cell.lon.toFixed(2)}° · ${pct(cell.seriousShare)} serious</small></div></button>`).join("");
+  document.querySelectorAll("#atlasTopCells button").forEach((button) => button.addEventListener("click", () => state.atlasMap?.flyTo([Number(button.dataset.lat), Number(button.dataset.lon)], 8)));
+  if (state.tab === "spatial") {
+    initializeAtlas();
+    setTimeout(() => { state.atlasMap.invalidateSize(); drawAtlas(); }, 20);
+  }
+}
+
+function setupAtlasControls() {
+  $("atlasMetric").addEventListener("change", (event) => { state.atlasMetric = event.target.value; renderSpatialAtlas(); });
+  $("atlasResolution").addEventListener("change", (event) => { state.atlasResolution = event.target.value; renderSpatialAtlas(); });
+  [["atlas2d", "2d"], ["atlas3d", "3d"]].forEach(([id, mode]) => $(id).addEventListener("click", () => {
+    state.atlasMode = mode;
+    $("atlas2d").classList.toggle("active", mode === "2d");
+    $("atlas3d").classList.toggle("active", mode === "3d");
+    drawAtlas();
+  }));
+  $("atlasReset").addEventListener("click", () => state.atlasMap?.setView([54.4, -3.4], 5));
 }
 
 function renderPatterns() {
@@ -555,10 +704,14 @@ function switchTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab}Panel`));
-  const titles = { overview: "Reported occurrence overview", patterns: "Pattern explorer", consequences: "Severity & human consequences", evidence: "Investigation evidence", quality: "Data confidence" };
+  const titles = { overview: "Reported occurrence overview", spatial: "3D spatial atlas", patterns: "Pattern explorer", consequences: "Severity & human consequences", evidence: "Investigation evidence", quality: "Data confidence" };
   $("pageTitle").textContent = titles[tab];
   setFilterMode(tab === "consequences");
   if (tab === "overview") setTimeout(() => state.map?.invalidateSize(), 20);
+  if (tab === "spatial") {
+    initializeAtlas();
+    renderSpatialAtlas();
+  }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -618,6 +771,7 @@ async function init() {
     setupFilters();
     setupTabs();
     setupEvidenceControls();
+    setupAtlasControls();
     setupBrief();
     renderConsequences();
     renderQuality();
