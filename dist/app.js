@@ -715,7 +715,7 @@ function setupBrief() {
 
 async function init() {
   try {
-    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json"), fetch("data/context.json")]);
+    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json"), fetch("data/context.json?v=6")]);
     if (!response.ok || !contextResponse.ok) throw new Error(`Data request failed: ${response.status}/${contextResponse.status}`);
     [state.data, state.contextData] = await Promise.all([response.json(), contextResponse.json()]);
     $("sourceLink").href = state.data.meta.source_url;
