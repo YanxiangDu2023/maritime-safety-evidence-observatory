@@ -122,17 +122,37 @@ function applyFilters() {
     (f.vessel === "All" || row.vessel_category === f.vessel) &&
     (f.severity === "All" || row.severity === f.severity)
   );
-  $("scopeCount").textContent = numberFormat.format(state.filtered.length);
+  if (state.tab !== "consequences") {
+    $("scopeCount").textContent = numberFormat.format(state.filtered.length);
+    $("scopeLabel").textContent = "in scope";
+  }
   renderOverview();
   renderPatterns();
   renderEvidence();
+}
+
+function setFilterMode(isModelTab) {
+  ["yearStart", "yearEnd", "eventFilter", "vesselFilter", "severityFilter", "resetFilters"].forEach((id) => {
+    $(id).disabled = isModelTab;
+  });
+  $("sidebar").classList.toggle("filters-disabled", isModelTab);
+  $("filterModeNote").textContent = isModelTab
+    ? "Full-snapshot model: filters are paused in this tab."
+    : "Filters apply to descriptive views.";
+  if (isModelTab) {
+    $("scopeCount").textContent = numberFormat.format(state.data.analysis.severity_model.n);
+    $("scopeLabel").textContent = "full model";
+  } else {
+    $("scopeCount").textContent = numberFormat.format(state.filtered.length);
+    $("scopeLabel").textContent = "in scope";
+  }
 }
 
 function svgWrap(content, viewBox = "0 0 700 260") {
   return `<svg viewBox="${viewBox}" role="img" aria-label="Data visualization" preserveAspectRatio="none">${content}</svg>`;
 }
 
-function renderLineChart(element, labels, values) {
+function renderLineChart(element, labels, values, partialLast = false) {
   const width = 700, height = 260, left = 48, right = 18, top = 18, bottom = 34;
   const chartW = width - left - right, chartH = height - top - bottom;
   const max = Math.max(...values, 1);
@@ -140,14 +160,21 @@ function renderLineChart(element, labels, values) {
   const y = (value) => top + chartH - value / max * chartH;
   const points = values.map((value, index) => `${x(index)},${y(value)}`);
   const path = `M${points.join(" L")}`;
+  const solidPoints = partialLast && points.length > 1 ? points.slice(0, -1) : points;
+  const solidPath = `M${solidPoints.join(" L")}`;
+  const partialPath = partialLast && points.length > 1 ? `M${points.at(-2)} L${points.at(-1)}` : "";
   const area = `${path} L${x(values.length - 1)},${top + chartH} L${x(0)},${top + chartH} Z`;
   const grid = [0, .25, .5, .75, 1].map((ratio) => {
     const gy = top + chartH - ratio * chartH;
     return `<line class="grid-line" x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}"/><text x="${left - 8}" y="${gy + 3}" text-anchor="end">${numberFormat.format(Math.round(max * ratio))}</text>`;
   }).join("");
   const labelsSvg = labels.map((label, index) => `<text x="${x(index)}" y="${height - 9}" text-anchor="middle">${label}</text>`).join("");
-  const dots = values.map((value, index) => `<circle cx="${x(index)}" cy="${y(value)}" r="4" fill="${palette.coral}" stroke="#fff" stroke-width="2"><title>${labels[index]}: ${numberFormat.format(value)}</title></circle>`).join("");
-  element.innerHTML = svgWrap(`${grid}<path class="line-area" d="${area}"/><path class="line-path" d="${path}"/>${dots}${labelsSvg}`, `0 0 ${width} ${height}`);
+  const partialShade = partialLast && labels.length > 1 ? `<rect x="${(x(labels.length - 2) + x(labels.length - 1)) / 2}" y="${top}" width="${width - right - (x(labels.length - 2) + x(labels.length - 1)) / 2}" height="${chartH}" fill="rgba(214,168,75,.09)"/><text x="${x(labels.length - 1)}" y="${top + 12}" text-anchor="middle" class="partial-label">PARTIAL</text>` : "";
+  const dots = values.map((value, index) => {
+    const partial = partialLast && index === values.length - 1;
+    return `<circle cx="${x(index)}" cy="${y(value)}" r="4" fill="${partial ? "#fbfaf6" : palette.coral}" stroke="${palette.coral}" stroke-width="2"><title>${labels[index]}: ${numberFormat.format(value)}${partial ? " (partial year)" : ""}</title></circle>`;
+  }).join("");
+  element.innerHTML = svgWrap(`${partialShade}${grid}<path class="line-area" d="${area}"/><path class="line-path" d="${solidPath}"/>${partialPath ? `<path class="line-path partial-segment" d="${partialPath}"/>` : ""}${dots}${labelsSvg}`, `0 0 ${width} ${height}`);
 }
 
 function renderHorizontalBars(element, entries) {
@@ -190,10 +217,13 @@ function renderGroupedBars(element, rows) {
 }
 
 function renderMissingBars(element, rows) {
-  const width = 700, height = 250, left = 150, right = 45, top = 8, rowH = 36;
+  const width = 700, height = Math.max(250, rows.length * 32 + 20), left = 150, right = 58, top = 8, rowH = 32;
   const content = rows.map((row, index) => {
-    const y = top + index * rowH, barW = row.rate / 100 * (width - left - right);
-    return `<text x="${left - 10}" y="${y + 19}" text-anchor="end">${esc(row.field)}</text><rect x="${left}" y="${y + 5}" width="${width - left - right}" height="18" fill="#e4e6e0"/><rect x="${left}" y="${y + 5}" width="${barW}" height="18" fill="${row.rate > 50 ? palette.coral : palette.tealLight}"/><text class="chart-value" x="${width - 4}" y="${y + 19}" text-anchor="end">${row.rate.toFixed(1)}%</text>`;
+    const y = top + index * rowH;
+    const blankW = row.rate / 100 * (width - left - right);
+    const unknownW = row.unknown_rate / 100 * (width - left - right);
+    const unavailable = Math.min(100, row.rate + row.unknown_rate);
+    return `<text x="${left - 10}" y="${y + 17}" text-anchor="end">${esc(row.field)}</text><rect x="${left}" y="${y + 4}" width="${width - left - right}" height="17" fill="#e4e6e0"/><rect x="${left}" y="${y + 4}" width="${blankW}" height="17" fill="${palette.coral}"><title>Blank: ${row.rate.toFixed(1)}%</title></rect><rect x="${left + blankW}" y="${y + 4}" width="${unknownW}" height="17" fill="${palette.gold}"><title>Encoded unknown: ${row.unknown_rate.toFixed(1)}%</title></rect><text class="chart-value" x="${width - 4}" y="${y + 17}" text-anchor="end">${unavailable.toFixed(1)}%</text>`;
   }).join("");
   element.innerHTML = svgWrap(content, `0 0 ${width} ${height}`);
 }
@@ -209,7 +239,9 @@ function renderOverview() {
   const byYear = countBy(records, "year");
   const years = [];
   for (let year = state.filters.yearStart; year <= state.filters.yearEnd; year += 1) years.push(year);
-  renderLineChart($("trendChart"), years, years.map((year) => byYear[year] || 0));
+  const includesPartialYear = state.data.meta.latest_year_partial && years.at(-1) === state.data.meta.year_max;
+  $("trendNote").textContent = includesPartialYear ? `${state.data.meta.year_max} is a partial year` : "Year of report";
+  renderLineChart($("trendChart"), years, years.map((year) => byYear[year] || 0), includesPartialYear);
 
   const events = topEntries(countBy(records, "event"), 7).reverse();
   renderHorizontalBars($("eventChart"), events);
@@ -314,6 +346,24 @@ function renderForestPlot(model) {
   }).join("");
 }
 
+function renderCalibration(validation) {
+  const width = 620, height = 300, left = 48, right = 18, top = 18, bottom = 40;
+  const chartW = width - left - right, chartH = height - top - bottom;
+  const maxValue = Math.max(.5, ...validation.calibration.flatMap((row) => [row.predicted, row.observed]));
+  const x = (value) => left + value / maxValue * chartW;
+  const y = (value) => top + chartH - value / maxValue * chartH;
+  const ticks = [0, .25, .5, .75, 1].map((ratio) => ratio * maxValue);
+  const grid = ticks.map((value) => `<line class="grid-line" x1="${left}" y1="${y(value)}" x2="${width - right}" y2="${y(value)}"/><line class="grid-line" x1="${x(value)}" y1="${top}" x2="${x(value)}" y2="${top + chartH}"/><text x="${left - 7}" y="${y(value) + 3}" text-anchor="end">${Math.round(value * 100)}%</text><text x="${x(value)}" y="${height - 15}" text-anchor="middle">${Math.round(value * 100)}%</text>`).join("");
+  const points = validation.calibration.map((row) => `${x(row.predicted)},${y(row.observed)}`).join(" ");
+  const dots = validation.calibration.map((row) => `<circle cx="${x(row.predicted)}" cy="${y(row.observed)}" r="5" fill="${palette.coral}" stroke="#fff" stroke-width="2"><title>Predicted ${pct(row.predicted)} · observed ${pct(row.observed)} · n=${row.n}</title></circle>`).join("");
+  $("calibrationChart").innerHTML = svgWrap(`${grid}<line x1="${left}" y1="${y(0)}" x2="${x(maxValue)}" y2="${y(maxValue)}" stroke="#98a4a5" stroke-dasharray="5 4"/><polyline points="${points}" fill="none" stroke="${palette.coral}" stroke-width="2"/>${dots}<text x="${left + chartW / 2}" y="${height - 1}" text-anchor="middle">Predicted serious-outcome rate</text><text transform="translate(12 ${top + chartH / 2}) rotate(-90)" text-anchor="middle">Observed rate</text>`, `0 0 ${width} ${height}`);
+}
+
+function renderModelSpecification(model) {
+  $("modelOutcomeDefinition").textContent = `Outcome: ${model.outcome_definition}; reference outcome: ${model.reference_outcome}.`;
+  $("modelSpecification").innerHTML = `<div class="specification-head"><span>Factor</span><span>Definition</span><span>Reference</span></div>${model.specifications.map((item) => `<div><strong>${esc(item.label)}</strong><span>${esc(item.definition)}</span><span>${esc(item.reference)}</span></div>`).join("")}`;
+}
+
 function renderPersonFlow(flow) {
   const width = 1100, height = 500, nodeWidth = 13, padding = 11;
   const colors = [palette.teal, palette.gold, palette.coral];
@@ -354,6 +404,11 @@ function renderPersonFlow(flow) {
   }).join("");
   const headings = ["OCCURRENCE EVENT", "PERSON TYPE", "RECORDED OUTCOME"].map((heading, index) => `<text class="flow-heading" x="${xPositions[index]}" y="12">${heading}</text>`).join("");
   $("personFlow").innerHTML = `<svg viewBox="0 0 ${width} ${height + 20}" role="img" aria-label="Affected-person record flows">${headings}${links}${nodeMarkup}</svg>`;
+  const outcomeTotals = flow.columns[2].map((name) => {
+    const total = flow.links.filter((link) => link.stage === 1 && link.target === name).reduce((sum, link) => sum + link.value, 0);
+    return `${name}: ${numberFormat.format(total)}`;
+  });
+  $("personFlowSummary").textContent = `Affected-person outcomes in the source data: ${outcomeTotals.join("; ")}.`;
 }
 
 function renderProfileBars(element, rows) {
@@ -372,9 +427,17 @@ function renderConsequences() {
   const model = analysis.severity_model;
   $("modelSample").textContent = numberFormat.format(model.n);
   $("modelOutcomes").textContent = `${numberFormat.format(model.positive_outcomes)} · ${(100 * model.positive_rate).toFixed(1)}%`;
-  $("modelAuc").textContent = model.auc.toFixed(3);
+  $("modelAuc").textContent = model.validation.auc.toFixed(3);
+  $("validationAuc").textContent = model.validation.auc.toFixed(3);
+  $("validationBrier").textContent = model.validation.brier.toFixed(4);
+  $("validationTp").textContent = numberFormat.format(model.validation.confusion_matrix.true_positive);
+  $("validationFn").textContent = numberFormat.format(model.validation.confusion_matrix.false_negative);
+  $("validationTn").textContent = numberFormat.format(model.validation.confusion_matrix.true_negative);
+  $("validationFp").textContent = numberFormat.format(model.validation.confusion_matrix.false_positive);
   renderSeverityMatrix(analysis.severity_matrix);
   renderForestPlot(model);
+  renderCalibration(model.validation);
+  renderModelSpecification(model);
   renderPersonFlow(analysis.person_flow);
   renderProfileBars($("ageDamageChart"), analysis.vessel_profile.by_age);
   renderProfileBars($("tonnageDamageChart"), analysis.vessel_profile.by_tonnage);
@@ -411,6 +474,8 @@ function renderEvidence() {
     return (!query || text.includes(query)) && evidenceMatchesTheme(row, state.evidenceTheme);
   });
   $("reportCount").textContent = numberFormat.format(reportRows.length);
+  const coverage = state.data.meta.report_coverage;
+  $("reportCoverage").textContent = `${numberFormat.format(coverage.linked)} / ${numberFormat.format(coverage.total)} · ${(coverage.rate * 100).toFixed(1)}%`;
   $("activeTheme").textContent = state.evidenceTheme;
   $("evidenceList").innerHTML = visible.length ? visible.slice(0, 80).map((row) => `
     <button class="evidence-card ${state.selectedEvidence === row.id ? "active" : ""}" data-evidence-id="${esc(row.id)}">
@@ -461,6 +526,24 @@ function renderQuality() {
   const unmatched = quality.unmatched_vessels + quality.unmatched_people;
   $("qualityIntegrity").textContent = unmatched === 0 ? "100%" : `${numberFormat.format(unmatched)} unmatched`;
   renderMissingBars($("missingChart"), quality.missingness);
+  $("qualityChecks").innerHTML = quality.checks.map((check) => `<div><span class="check-icon">${check.passed ? "✓" : "!"}</span><strong>${esc(check.name)}</strong><small>${check.value === null ? (check.passed ? "Passed" : "Failed") : numberFormat.format(check.value)}</small></div>`).join("");
+  $("sourceFiles").innerHTML = state.data.meta.source_files.map((file) => `<div><strong>${esc(file.name)}</strong><span>${numberFormat.format(file.rows)} rows</span><code title="${esc(file.sha256)}">${esc(file.sha256.slice(0, 16))}…</code></div>`).join("");
+}
+
+function renderPortfolioSummary() {
+  const records = state.data.records;
+  const seriousCount = records.filter(serious).length;
+  $("findingSeverity").textContent = `${numberFormat.format(seriousCount)} · ${(100 * seriousCount / records.length).toFixed(1)}%`;
+  const effects = state.data.analysis.severity_model.effects.filter((effect) => !effect.label.toLowerCase().includes("unknown") && effect.label !== "Calendar year");
+  const strongest = [...effects].sort((a, b) => b.odds_ratio - a.odds_ratio)[0];
+  $("findingModel").textContent = `${strongest.label} · OR ${strongest.odds_ratio.toFixed(2)}`;
+  $("findingModelText").textContent = `largest adjusted association in the current model; 95% CI ${strongest.ci_low.toFixed(2)}–${strongest.ci_high.toFixed(2)}.`;
+  const weather = state.data.quality.missingness.find((row) => row.field === "Weather");
+  $("findingUnknown").textContent = `${weather.unknown_rate.toFixed(1)}% unknown`;
+  $("occurrenceStatus").textContent = `${numberFormat.format(records.length)} rows`;
+  $("relationshipStatus").textContent = state.data.quality.checks.every((check) => check.passed) ? "All passed" : "Review";
+  const coverage = state.data.meta.report_coverage;
+  $("reportCoverageStatus").textContent = `${(coverage.rate * 100).toFixed(1)}%`;
 }
 
 function setupTabs() {
@@ -474,6 +557,7 @@ function switchTab(tab) {
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab}Panel`));
   const titles = { overview: "Reported occurrence overview", patterns: "Pattern explorer", consequences: "Severity & human consequences", evidence: "Investigation evidence", quality: "Data confidence" };
   $("pageTitle").textContent = titles[tab];
+  setFilterMode(tab === "consequences");
   if (tab === "overview") setTimeout(() => state.map?.invalidateSize(), 20);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -493,7 +577,7 @@ function generateBrief() {
     <div class="brief-kpis">
       <div><strong>${numberFormat.format(records.length)}</strong><span>Occurrences</span></div>
       <div><strong>${numberFormat.format(injuries)}</strong><span>Injuries</span></div>
-      <div><strong>${numberFormat.format(fatalities)}</strong><span>Fatalities</span></div>
+      <div><strong>${numberFormat.format(fatalities)}</strong><span>Deaths / presumed deaths</span></div>
       <div><strong>${numberFormat.format(reportCount)}</strong><span>Report links</span></div>
     </div>
     <h3>Key descriptive findings</h3>
@@ -505,7 +589,7 @@ function generateBrief() {
     <h3>Interpretation</h3>
     <p>These results describe the composition of publicly reported occurrences in the selected scope. They do not estimate accident probability. Differences between vessel categories may reflect fleet size, operating exposure, reporting practice and other unobserved factors.</p>
     <h3>Evidence and limitations</h3>
-    <p>${numberFormat.format(reportCount)} records in the selected scope include a published-report link. The current prototype preserves those links but does not yet extract or validate page-level evidence. The latest source year is incomplete, and raw counts should not be interpreted as risk rates.</p>
+    <p>${numberFormat.format(reportCount)} records in the selected scope include a published-report link. Injury counts use person records explicitly classified as injured; deaths include confirmed deaths and missing persons recorded as death presumed, with vessel totals used only where no person rows exist. The latest source year is incomplete, and raw counts should not be interpreted as risk rates.</p>
     <h3>Suggested next analytical step</h3>
     <p>Prioritise a report-level review of the leading event–vessel combinations, then test whether common contributing themes persist after accounting for reporting coverage and an appropriate exposure denominator.</p>`;
   $("briefModal").showModal();
@@ -530,12 +614,14 @@ async function init() {
     $("sourceLink").href = state.data.meta.source_url;
     $("dateStamp").textContent = `UK public occurrence data · ${state.data.meta.year_min}–${state.data.meta.year_max}`;
     $("footerUpdated").textContent = `Source updated ${state.data.meta.last_source_update || "not recorded"}`;
+    $("footerBuilt").textContent = `Built ${new Date(state.data.meta.built_at).toLocaleDateString("en-GB")}`;
     setupFilters();
     setupTabs();
     setupEvidenceControls();
     setupBrief();
     renderConsequences();
     renderQuality();
+    renderPortfolioSummary();
     applyFilters();
     $("mobileMenu").addEventListener("click", () => $("sidebar").classList.toggle("open"));
     setTimeout(() => $("loadingScreen").classList.add("hidden"), 250);

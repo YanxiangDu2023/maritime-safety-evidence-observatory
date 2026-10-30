@@ -1,0 +1,55 @@
+import importlib.util
+import json
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("build_data", ROOT / "scripts" / "build_data.py")
+BUILD = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader
+SPEC.loader.exec_module(BUILD)
+
+
+class PersonClassificationTests(unittest.TestCase):
+    def test_injured_excludes_no_injury(self):
+        self.assertTrue(BUILD.is_injured_person({"Physical_Condition_L1": "Injured"}))
+        self.assertFalse(BUILD.is_injured_person({"Physical_Condition_L1": "No injury"}))
+
+    def test_fatality_includes_confirmed_and_presumed(self):
+        self.assertTrue(BUILD.is_fatal_person({"Physical_Condition_L1": "Death (confirmed)"}))
+        self.assertTrue(BUILD.is_fatal_person({"Physical_Condition_L1": "Missing (death presumed)"}))
+        self.assertFalse(BUILD.is_fatal_person({"Physical_Condition_L1": "Injured"}))
+
+
+class StatisticalHelperTests(unittest.TestCase):
+    def test_wilson_interval_contains_observed_share(self):
+        low, high = BUILD.wilson_interval(25, 100)
+        self.assertLess(low, 0.25)
+        self.assertGreater(high, 0.25)
+
+
+class BuiltArtifactTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.payload = json.loads((ROOT / "dist" / "data" / "dashboard.json").read_text())
+
+    def test_expected_row_counts(self):
+        self.assertEqual(self.payload["quality"]["rows"]["occurrences"], 9063)
+        self.assertEqual(self.payload["quality"]["rows"]["vessels"], 9830)
+        self.assertEqual(self.payload["quality"]["rows"]["affected_people"], 3040)
+
+    def test_corrected_people_metrics(self):
+        self.assertEqual(sum(row["injuries"] for row in self.payload["records"]), 2400)
+        self.assertEqual(sum(row["fatalities"] for row in self.payload["records"]), 183)
+
+    def test_release_checks_and_model_validation(self):
+        self.assertTrue(all(check["passed"] for check in self.payload["quality"]["checks"]))
+        model = self.payload["analysis"]["severity_model"]
+        self.assertTrue(model["converged"])
+        self.assertEqual(model["validation"]["folds"], 5)
+        self.assertGreater(model["validation"]["auc"], 0.5)
+
+
+if __name__ == "__main__":
+    unittest.main()

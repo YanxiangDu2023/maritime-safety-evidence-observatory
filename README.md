@@ -12,6 +12,8 @@ An interactive portfolio prototype that turns public UK Marine Accident Investig
 - explicit separation of reported occurrence counts from exposure-adjusted risk;
 - source-linked investigation evidence;
 - an automatically assembled, print-ready evidence brief.
+- deterministic five-fold model validation, calibration and Brier-score reporting;
+- release-blocking relationship and coordinate checks plus source-file SHA-256 fingerprints.
 
 ## Data source
 
@@ -25,10 +27,23 @@ Download the MAIB files to `data/raw/` as:
 - `vessels.csv`
 - `affected_persons.csv`
 
+Or refresh all three files from the official MAIB download endpoints:
+
+```bash
+python3 scripts/refresh_data.py
+```
+
 Then run:
 
 ```bash
 python3 scripts/build_data.py
+```
+
+Validate the analytical artifact before publication:
+
+```bash
+python3 -m unittest discover -s tests -v
+node --check dist/app.js
 ```
 
 ## Run locally
@@ -44,6 +59,8 @@ python3 -m http.server 8000 --directory dist
 The dashboard describes reported occurrences. It does not estimate the probability that a vessel will experience an accident. Comparisons of raw counts by vessel category require an exposure denominator such as fleet size, voyages, distance travelled or operating hours before they can be interpreted as risk rates.
 
 The severity model is conditional on an occurrence appearing in the MAIB dataset. Its adjusted odds ratios describe associations with the published severity classification; they are not causal effects and should not be interpreted as accident-risk estimates.
+
+See [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for metric definitions, model validation and reproducibility controls.
 
 ## Roadmap
 

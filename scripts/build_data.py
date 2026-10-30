@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 from collections import Counter, defaultdict
@@ -19,6 +20,14 @@ OUT = ROOT / "dist" / "data" / "dashboard.json"
 def read_csv(name: str) -> list[dict[str, str]]:
     with (RAW / name).open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
         return list(csv.DictReader(handle, delimiter=";"))
+
+
+def file_sha256(name: str) -> str:
+    digest = hashlib.sha256()
+    with (RAW / name).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def clean(value: str | None) -> str:
@@ -64,10 +73,8 @@ def invert_matrix(matrix: list[list[float]]) -> list[list[float]]:
     return [row[size:] for row in augmented]
 
 
-def logistic_regression(
-    design: list[list[float]], outcomes: list[int], labels: list[str]
-) -> dict:
-    """Fit an unpenalised logistic model using IRLS and return interpretable effects."""
+def fit_logistic(design: list[list[float]], outcomes: list[int]) -> tuple[list[float], list[list[float]], bool]:
+    """Fit an unpenalised logistic model using IRLS."""
     feature_count = len(design[0])
     coefficients = [0.0] * feature_count
     inverse_information: list[list[float]] | None = None
@@ -108,6 +115,91 @@ def logistic_regression(
 
     if inverse_information is None:
         raise ValueError("Model did not initialise")
+    return coefficients, inverse_information, converged
+
+
+def predict_logistic(design: list[list[float]], coefficients: list[float]) -> list[float]:
+    predictions = []
+    for row in design:
+        linear = max(-30.0, min(30.0, sum(value * coefficient for value, coefficient in zip(row, coefficients))))
+        predictions.append(1.0 / (1.0 + math.exp(-linear)))
+    return predictions
+
+
+def roc_auc(predictions: list[float], outcomes: list[int]) -> float:
+    ranked = sorted(zip(predictions, outcomes), key=lambda pair: pair[0])
+    positives = sum(outcomes)
+    negatives = len(outcomes) - positives
+    if not positives or not negatives:
+        return 0.5
+    rank_sum = sum(rank for rank, (_, outcome) in enumerate(ranked, start=1) if outcome)
+    return (rank_sum - positives * (positives + 1) / 2) / (positives * negatives)
+
+
+def calibration_bins(predictions: list[float], outcomes: list[int], bin_count: int = 10) -> list[dict]:
+    ordered = sorted(zip(predictions, outcomes), key=lambda pair: pair[0])
+    bins = []
+    for index in range(bin_count):
+        start = round(index * len(ordered) / bin_count)
+        end = round((index + 1) * len(ordered) / bin_count)
+        group = ordered[start:end]
+        if not group:
+            continue
+        bins.append(
+            {
+                "predicted": round(sum(value for value, _ in group) / len(group), 4),
+                "observed": round(sum(outcome for _, outcome in group) / len(group), 4),
+                "n": len(group),
+            }
+        )
+    return bins
+
+
+def cross_validate_logistic(design: list[list[float]], outcomes: list[int], folds: int = 5) -> dict:
+    """Deterministic stratified cross-validation for honest predictive diagnostics."""
+    fold_ids = [0] * len(outcomes)
+    positive_indices = [index for index, outcome in enumerate(outcomes) if outcome]
+    negative_indices = [index for index, outcome in enumerate(outcomes) if not outcome]
+    for indices in (positive_indices, negative_indices):
+        for position, index in enumerate(indices):
+            fold_ids[index] = position % folds
+
+    predictions = [0.0] * len(outcomes)
+    for fold in range(folds):
+        train_design = [row for index, row in enumerate(design) if fold_ids[index] != fold]
+        train_outcomes = [outcome for index, outcome in enumerate(outcomes) if fold_ids[index] != fold]
+        test_indices = [index for index in range(len(outcomes)) if fold_ids[index] == fold]
+        coefficients, _, converged = fit_logistic(train_design, train_outcomes)
+        if not converged:
+            raise ValueError(f"Cross-validation fold {fold + 1} did not converge")
+        fold_predictions = predict_logistic([design[index] for index in test_indices], coefficients)
+        for index, prediction in zip(test_indices, fold_predictions):
+            predictions[index] = prediction
+
+    threshold = 0.5
+    true_positive = sum(outcome == 1 and prediction >= threshold for prediction, outcome in zip(predictions, outcomes))
+    false_positive = sum(outcome == 0 and prediction >= threshold for prediction, outcome in zip(predictions, outcomes))
+    true_negative = sum(outcome == 0 and prediction < threshold for prediction, outcome in zip(predictions, outcomes))
+    false_negative = sum(outcome == 1 and prediction < threshold for prediction, outcome in zip(predictions, outcomes))
+    brier = sum((prediction - outcome) ** 2 for prediction, outcome in zip(predictions, outcomes)) / len(outcomes)
+    return {
+        "folds": folds,
+        "auc": round(roc_auc(predictions, outcomes), 3),
+        "brier": round(brier, 4),
+        "threshold": threshold,
+        "confusion_matrix": {
+            "true_positive": true_positive,
+            "false_positive": false_positive,
+            "true_negative": true_negative,
+            "false_negative": false_negative,
+        },
+        "calibration": calibration_bins(predictions, outcomes),
+    }
+
+
+def logistic_regression(design: list[list[float]], outcomes: list[int], labels: list[str]) -> dict:
+    """Fit a logistic model and return adjusted effects plus validation diagnostics."""
+    coefficients, inverse_information, converged = fit_logistic(design, outcomes)
 
     effects = []
     for index, label in enumerate(labels, start=1):
@@ -122,21 +214,15 @@ def logistic_regression(
             }
         )
 
-    predictions = []
-    for row in design:
-        linear = max(-30.0, min(30.0, sum(value * coefficient for value, coefficient in zip(row, coefficients))))
-        predictions.append(1.0 / (1.0 + math.exp(-linear)))
-    ranked = sorted(zip(predictions, outcomes), key=lambda pair: pair[0])
+    predictions = predict_logistic(design, coefficients)
     positives = sum(outcomes)
-    negatives = len(outcomes) - positives
-    rank_sum = sum(rank for rank, (_, outcome) in enumerate(ranked, start=1) if outcome)
-    auc = (rank_sum - positives * (positives + 1) / 2) / (positives * negatives) if positives and negatives else 0.5
 
     return {
         "n": len(outcomes),
         "positive_outcomes": positives,
         "positive_rate": round(positives / len(outcomes), 4),
-        "auc": round(auc, 3),
+        "in_sample_auc": round(roc_auc(predictions, outcomes), 3),
+        "validation": cross_validate_logistic(design, outcomes),
         "converged": converged,
         "effects": effects,
     }
@@ -154,19 +240,24 @@ def wilson_interval(successes: int, total: int) -> tuple[float, float]:
 
 
 def severity_model(occurrences: list[dict[str, str]], vessel_by_occurrence: dict[str, list[dict[str, str]]]) -> dict:
-    labels = [
-        "Night conditions",
-        "Adverse weather",
-        "Rough sea state (4+)",
-        "Multiple vessels involved",
-        "Fishing vessel involved",
-        "Recreational vessel involved",
-        "Passenger ship involved",
-        "Collision / contact",
-        "Grounding / stranding",
-        "Fire / explosion",
-        "Accident to person(s)",
+    specifications = [
+        {"label": "Night conditions", "definition": "Natural_Light = Night", "reference": "Known non-night conditions"},
+        {"label": "Natural light unknown", "definition": "Natural_Light is unknown", "reference": "Known non-night conditions"},
+        {"label": "Adverse weather", "definition": "Weather is rain, fog or snow", "reference": "Known clear or overcast weather"},
+        {"label": "Weather unknown", "definition": "Weather is unknown", "reference": "Known clear or overcast weather"},
+        {"label": "Rough sea state (4+)", "definition": "Douglas sea state code ≥ 4", "reference": "Known sea state below 4"},
+        {"label": "Sea state unknown", "definition": "Sea_State is unknown", "reference": "Known sea state below 4"},
+        {"label": "Multiple vessels involved", "definition": "More than one linked vessel record", "reference": "One linked vessel"},
+        {"label": "Fishing vessel involved", "definition": "At least one fishing-vessel record", "reference": "No fishing vessel involved"},
+        {"label": "Recreational vessel involved", "definition": "At least one recreational-vessel record", "reference": "No recreational vessel involved"},
+        {"label": "Passenger ship involved", "definition": "At least one passenger-ship record", "reference": "No passenger ship involved"},
+        {"label": "Collision / contact", "definition": "Main event is collision or contact", "reference": "Other event types"},
+        {"label": "Grounding / stranding", "definition": "Main event is grounding/stranding", "reference": "Other event types"},
+        {"label": "Fire / explosion", "definition": "Main event is fire/explosion", "reference": "Other event types"},
+        {"label": "Accident to person(s)", "definition": "Main event is accident to person(s)", "reference": "Other event types"},
+        {"label": "Calendar year", "definition": "One-year increase in Year_Reported", "reference": "Previous calendar year"},
     ]
+    labels = [item["label"] for item in specifications]
     design: list[list[float]] = []
     outcomes: list[int] = []
     for occurrence in occurrences:
@@ -176,15 +267,23 @@ def severity_model(occurrences: list[dict[str, str]], vessel_by_occurrence: dict
         ship_types = {clean(vessel.get("Ship_Craft_Type_L1")).lower() for vessel in vessels}
         event = clean(occurrence.get("Main_Event_L1")).lower()
         weather = clean(occurrence.get("Weather")).lower()
+        light = clean(occurrence.get("Natural_Light")).lower()
         sea_state_text = clean(occurrence.get("Sea_State"))
+        weather_unknown = not weather or "unknown" in weather
+        light_unknown = not light or "unknown" in light
+        sea_state_unknown = not sea_state_text or "unknown" in sea_state_text.lower()
         try:
             sea_state = int(sea_state_text.split()[0])
         except (ValueError, IndexError):
             sea_state = 0
+        year = integer(occurrence.get("Year_Reported")) or 2020
         features = [
-            clean(occurrence.get("Natural_Light")).lower() == "night",
+            light == "night",
+            light_unknown,
             weather in {"rain", "fog", "snow"},
-            sea_state >= 4,
+            weather_unknown,
+            sea_state >= 4 and not sea_state_unknown,
+            sea_state_unknown,
             len(vessels) > 1,
             "fishing vessel" in categories,
             "recreational (non commercial)" in categories,
@@ -193,11 +292,16 @@ def severity_model(occurrences: list[dict[str, str]], vessel_by_occurrence: dict
             event == "grounding / stranding",
             event == "fire / explosion",
             event == "accident to person(s)",
+            year - 2020,
         ]
         design.append([1.0] + [float(value) for value in features])
         severity = normalise_severity(clean(occurrence.get("Occurrence_Severity")))
         outcomes.append(int(severity in {"Serious", "Very serious"}))
-    return logistic_regression(design, outcomes, labels)
+    result = logistic_regression(design, outcomes, labels)
+    result["specifications"] = specifications
+    result["outcome_definition"] = "Occurrence_Severity is Serious or Very serious"
+    result["reference_outcome"] = "Marine incident or Less serious"
+    return result
 
 
 def consequence_analysis(
@@ -289,14 +393,12 @@ def consequence_analysis(
             )
         return result
 
-    event_years = [integer(row.get("Year_Reported")) for row in occurrences if integer(row.get("Year_Reported"))]
-    reference_year = max(event_years) if event_years else datetime.now().year
-
     def age_band(vessel: dict[str, str]) -> str:
         built = integer(vessel.get("Year_Built"))
-        if built < 1850 or built > reference_year:
+        event_year = integer(vessel.get("Year_Reported"))
+        if built < 1850 or not event_year or built > event_year:
             return "Unknown"
-        age = reference_year - built
+        age = event_year - built
         if age < 10:
             return "<10 years"
         if age < 20:
@@ -362,19 +464,12 @@ def normalise_event(value: str) -> str:
 
 
 def is_fatal_person(row: dict[str, str]) -> bool:
-    text = " ".join(
-        clean(row.get(key)).lower()
-        for key in ("Physical_Condition_L1", "Physical_Condition_L2", "Injury_Type_L1")
-    )
-    return "dead" in text or "fatal" in text or "deceased" in text
+    condition = clean(row.get("Physical_Condition_L1")).lower()
+    return condition in {"death (confirmed)", "missing (death presumed)"}
 
 
 def is_injured_person(row: dict[str, str]) -> bool:
-    text = " ".join(
-        clean(row.get(key)).lower()
-        for key in ("Physical_Condition_L1", "Physical_Condition_L2", "Injury_Type_L1")
-    )
-    return "injur" in text or "fracture" in text or "burn" in text
+    return clean(row.get("Physical_Condition_L1")).lower() == "injured"
 
 
 def main() -> None:
@@ -465,23 +560,55 @@ def main() -> None:
         "Severity": "Occurrence_Severity",
         "Coordinates": "Latitude",
         "Coastal state": "Coastal_State_Affected",
+        "Natural light": "Natural_Light",
         "Weather": "Weather",
+        "Visibility": "Visibility",
+        "Wind force": "Wind_Force",
+        "Sea state": "Sea_State",
         "Published report": "Published_Report_Website_Link",
     }
     missingness = []
     for label, field in key_fields.items():
         missing = sum(1 for row in occurrences if not clean(row.get(field)))
+        unknown = sum(
+            1
+            for row in occurrences
+            if "unknown" in clean(row.get(field)).lower()
+            or "not recorded" in clean(row.get(field)).lower()
+        )
         missingness.append(
             {
                 "field": label,
                 "missing": missing,
                 "rate": round(100 * missing / len(occurrences), 1) if occurrences else 0,
+                "unknown": unknown,
+                "unknown_rate": round(100 * unknown / len(occurrences), 1) if occurrences else 0,
             }
         )
 
     duplicate_occurrences = len(occurrences) - len(occurrence_ids)
     unmatched_vessels = sum(1 for row in vessels if clean(row.get("Occurrence_Id")) not in occurrence_ids)
     unmatched_persons = sum(1 for row in persons if clean(row.get("Occurrence_Id")) not in occurrence_ids)
+    report_count = sum(bool(clean(row.get("Published_Report_Website_Link"))) for row in occurrences)
+    checks = [
+        {"name": "Occurrence IDs are unique", "passed": duplicate_occurrences == 0, "value": duplicate_occurrences},
+        {"name": "All vessel rows link to an occurrence", "passed": unmatched_vessels == 0, "value": unmatched_vessels},
+        {"name": "All person rows link to an occurrence", "passed": unmatched_persons == 0, "value": unmatched_persons},
+        {"name": "Serious outcomes are present", "passed": any(record["severity"] in {"Serious", "Very serious"} for record in records), "value": None},
+        {"name": "Coordinates are within valid bounds", "passed": all(record["lat"] is None or (-90 <= record["lat"] <= 90 and -180 <= record["lon"] <= 180) for record in records), "value": None},
+    ]
+    failed_checks = [check["name"] for check in checks if not check["passed"]]
+    if failed_checks:
+        raise ValueError("Data quality checks failed: " + ", ".join(failed_checks))
+
+    source_files = [
+        {"name": name, "sha256": file_sha256(name), "rows": row_count}
+        for name, row_count in (
+            ("occurrences.csv", len(occurrences)),
+            ("vessels.csv", len(vessels)),
+            ("affected_persons.csv", len(persons)),
+        )
+    ]
 
     payload = {
         "meta": {
@@ -494,6 +621,17 @@ def main() -> None:
             "year_max": max(years) if years else None,
             "latest_year_partial": True,
             "method_note": "Counts describe reported occurrences and are not exposure-adjusted accident rates.",
+            "source_files": source_files,
+            "report_coverage": {
+                "linked": report_count,
+                "total": len(occurrences),
+                "rate": round(report_count / len(occurrences), 4) if occurrences else 0,
+            },
+            "people_metrics": {
+                "injury_definition": "Physical_Condition_L1 = Injured; vessel totals are used only when no person rows exist.",
+                "fatality_definition": "Physical_Condition_L1 is Death (confirmed) or Missing (death presumed); vessel totals are used only when no person rows exist.",
+                "presumed_deaths_included": True,
+            },
         },
         "quality": {
             "rows": {
@@ -505,6 +643,7 @@ def main() -> None:
             "unmatched_vessels": unmatched_vessels,
             "unmatched_people": unmatched_persons,
             "missingness": missingness,
+            "checks": checks,
         },
         "analysis": consequence_analysis(occurrences, vessels, persons, vessel_by_occurrence),
         "records": records,

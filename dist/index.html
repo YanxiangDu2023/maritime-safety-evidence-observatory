@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="An evidence-aware dashboard for exploring reported UK marine occurrences." />
     <title>Maritime Safety Evidence Observatory</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/leaflet.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -21,7 +22,7 @@
             <svg viewBox="0 0 36 36"><path d="M18 3v21M11 10h14M7 20c2 7 7 11 11 12 4-1 9-5 11-12-3 3-7 4-11 4S10 23 7 20Z"/><circle cx="18" cy="6" r="3"/></svg>
           </div>
           <div>
-            <span class="eyebrow">Independent prototype</span>
+            <span class="eyebrow">Amanda Du · Data portfolio</span>
             <strong>Maritime Safety<br />Evidence Observatory</strong>
           </div>
         </div>
@@ -30,6 +31,7 @@
           <span>Analysis filters</span>
           <button class="text-button" id="resetFilters">Reset</button>
         </div>
+        <p class="filter-mode-note" id="filterModeNote">Filters apply to descriptive views.</p>
 
         <label class="filter-control">
           <span>Year range</span>
@@ -56,9 +58,9 @@
         </label>
 
         <div class="source-status">
-          <div class="status-line"><span class="status-dot live"></span><span>MAIB occurrences</span><strong>Available</strong></div>
-          <div class="status-line"><span class="status-dot live"></span><span>Vessel records</span><strong>Linked</strong></div>
-          <div class="status-line"><span class="status-dot partial"></span><span>Investigation reports</span><strong>Partial</strong></div>
+          <div class="status-line"><span class="status-dot live"></span><span>MAIB snapshot</span><strong id="occurrenceStatus">—</strong></div>
+          <div class="status-line"><span class="status-dot live"></span><span>Relationship checks</span><strong id="relationshipStatus">—</strong></div>
+          <div class="status-line"><span class="status-dot partial"></span><span>Report coverage</span><strong id="reportCoverageStatus">—</strong></div>
         </div>
 
         <a class="source-link" id="sourceLink" href="#" target="_blank" rel="noreferrer">Open official data source ↗</a>
@@ -72,7 +74,7 @@
             <h1 id="pageTitle">Reported occurrence overview</h1>
           </div>
           <div class="topbar-actions">
-            <div class="scope-pill"><span></span><strong id="scopeCount">—</strong> in scope</div>
+            <div class="scope-pill"><span></span><strong id="scopeCount">—</strong> <span id="scopeLabel">in scope</span></div>
             <button class="primary-button" id="briefButton">Generate evidence brief</button>
           </div>
         </header>
@@ -92,16 +94,22 @@
             <button data-tab-jump="quality">View confidence notes →</button>
           </div>
 
+          <div class="finding-grid" aria-label="Key analytical findings">
+            <article><span>01 · OUTCOME</span><strong id="findingSeverity">—</strong><p>of reported occurrences are classified serious or very serious.</p><button data-tab-jump="consequences">Inspect severity analysis →</button></article>
+            <article><span>02 · ADJUSTED ASSOCIATION</span><strong id="findingModel">—</strong><p id="findingModelText">largest adjusted association in the current model.</p><button data-tab-jump="consequences">View forest plot →</button></article>
+            <article class="caution"><span>03 · DATA LIMIT</span><strong id="findingUnknown">—</strong><p>weather values are unknown; environmental estimates require caution.</p><button data-tab-jump="quality">Review data confidence →</button></article>
+          </div>
+
           <div class="metric-grid">
             <article class="metric-card"><span>Reported occurrences</span><strong id="metricOccurrences">—</strong><small id="metricOccurrencesNote">Filtered records</small></article>
             <article class="metric-card"><span>Vessels involved</span><strong id="metricVessels">—</strong><small>Linked vessel records</small></article>
-            <article class="metric-card accent"><span>People injured</span><strong id="metricInjuries">—</strong><small>Recorded affected people</small></article>
-            <article class="metric-card dark"><span>Fatalities</span><strong id="metricFatalities">—</strong><small>Recorded affected people</small></article>
+            <article class="metric-card accent"><span>People injured</span><strong id="metricInjuries">—</strong><small>Physical condition recorded as injured</small></article>
+            <article class="metric-card dark"><span>Deaths / presumed deaths</span><strong id="metricFatalities">—</strong><small>Confirmed deaths plus missing, death presumed</small></article>
           </div>
 
           <div class="dashboard-grid overview-grid">
             <article class="panel chart-panel trend-panel">
-              <div class="panel-header"><div><span class="panel-kicker">Temporal view</span><h2>Reported occurrences over time</h2></div><span class="panel-note">Year of report</span></div>
+              <div class="panel-header"><div><span class="panel-kicker">Temporal view</span><h2>Reported occurrences over time</h2></div><span class="panel-note" id="trendNote">Year of report</span></div>
               <div class="chart-wrap svg-chart" id="trendChart"></div>
             </article>
 
@@ -165,10 +173,12 @@
             <p>This view moves beyond occurrence counts by retaining vessel- and person-level records. Results remain conditional on a reported occurrence and are not exposure-adjusted risk estimates.</p>
           </div>
 
+          <div class="fixed-scope-notice"><strong>Full-snapshot model</strong><span>Global filters are paused in this tab. All model, person-flow and vessel-profile panels use the complete published snapshot.</span></div>
+
           <div class="analysis-banner">
             <div><span>MODEL SAMPLE</span><strong id="modelSample">—</strong><small>reported occurrences</small></div>
             <div><span>SERIOUS OUTCOMES</span><strong id="modelOutcomes">—</strong><small>serious / very serious</small></div>
-            <div><span>DISCRIMINATION</span><strong id="modelAuc">—</strong><small>in-sample ROC AUC</small></div>
+            <div><span>VALIDATED DISCRIMINATION</span><strong id="modelAuc">—</strong><small>5-fold cross-validated ROC AUC</small></div>
             <p><strong>Reading the model:</strong> an odds ratio above 1 indicates higher adjusted odds of a serious classification among reported occurrences. Confidence intervals crossing 1 are not statistically distinguishable from no association at the 95% level.</p>
           </div>
 
@@ -186,9 +196,26 @@
               <p class="chart-footnote">All displayed factors are included simultaneously. Estimates describe association, not causal effects or accident probability.</p>
             </article>
 
+            <article class="panel validation-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Out-of-fold validation</span><h2>Calibration and classification diagnostics</h2></div><span class="panel-note">5-fold stratified cross-validation</span></div>
+              <div class="validation-layout">
+                <div id="calibrationChart" class="calibration-chart svg-chart" aria-label="Calibration chart comparing predicted and observed outcome rates"></div>
+                <div class="validation-metrics">
+                  <div><span>CV ROC AUC</span><strong id="validationAuc">—</strong></div>
+                  <div><span>Brier score</span><strong id="validationBrier">—</strong></div>
+                  <div><span>True positive</span><strong id="validationTp">—</strong></div>
+                  <div><span>False negative</span><strong id="validationFn">—</strong></div>
+                  <div><span>True negative</span><strong id="validationTn">—</strong></div>
+                  <div><span>False positive</span><strong id="validationFp">—</strong></div>
+                  <p>AUC measures ranking discrimination; the Brier score measures probability error. Confusion-matrix counts use a 0.50 probability threshold and reveal the expected sensitivity trade-off for an imbalanced outcome.</p>
+                </div>
+              </div>
+            </article>
+
             <article class="panel person-flow-panel wide-panel">
               <div class="panel-header"><div><span class="panel-kicker">Person-level pathway</span><h2>Occurrence event → person type → recorded outcome</h2></div><span class="panel-note">3,040 affected-person records</span></div>
-              <div id="personFlow" class="person-flow" aria-label="Flow diagram of events, affected people and outcomes"></div>
+              <div id="personFlow" class="person-flow" role="img" aria-describedby="personFlowSummary" aria-label="Flow diagram of events, affected people and outcomes"></div>
+              <p id="personFlowSummary" class="sr-only"></p>
               <p class="chart-footnote">Band width represents affected-person records. The diagram describes the published records and is not a population injury rate.</p>
             </article>
 
@@ -207,6 +234,12 @@
             <strong>Decision boundary</strong>
             <p>The model asks which characteristics are associated with severity <em>after an occurrence has entered the MAIB dataset</em>. Without fleet size, voyages, distance travelled or operating hours, it cannot identify which vessel group has the highest accident risk.</p>
           </div>
+
+          <details class="model-specification">
+            <summary>Model specification, definitions and reference groups</summary>
+            <div class="specification-intro"><p><strong id="modelOutcomeDefinition">—</strong></p><p>Unknown environmental values are represented explicitly instead of being treated as normal conditions.</p></div>
+            <div class="specification-table" id="modelSpecification"></div>
+          </details>
         </section>
 
         <section class="tab-panel" id="evidencePanel">
@@ -219,8 +252,8 @@
 
           <div class="evidence-summary">
             <div><span>Published reports in current scope</span><strong id="reportCount">—</strong></div>
+            <div><span>Full-snapshot coverage</span><strong id="reportCoverage">—</strong></div>
             <div><span>Current evidence theme</span><strong id="activeTheme">All themes</strong></div>
-            <div><span>Citation standard</span><strong>Source-linked</strong></div>
           </div>
 
           <div class="evidence-layout">
@@ -246,6 +279,7 @@
           <div class="dashboard-grid quality-grid">
             <article class="panel chart-panel">
               <div class="panel-header"><div><span class="panel-kicker">Completeness</span><h2>Missingness in key fields</h2></div><span class="panel-note">Source table</span></div>
+              <div class="missing-legend"><span><i></i>Blank</span><span><i></i>Encoded unknown</span></div>
               <div class="chart-wrap svg-chart" id="missingChart"></div>
             </article>
 
@@ -257,6 +291,27 @@
                 <i></i><div><span>03</span><strong>Analysis-ready records</strong><small>Definitions separated</small></div>
                 <i></i><div><span>04</span><strong>Dashboard & brief</strong><small>Limits displayed</small></div>
               </div>
+            </article>
+
+            <article class="panel validation-checks-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Release gate</span><h2>Automated data checks</h2></div><span class="panel-note">Build fails if a check fails</span></div>
+              <div id="qualityChecks" class="quality-checks"></div>
+            </article>
+
+            <article class="panel dictionary-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Metric dictionary</span><h2>Definitions used in this dashboard</h2></div></div>
+              <dl>
+                <div><dt>Reported occurrence</dt><dd>One row in the MAIB occurrence export; not necessarily a serious accident.</dd></div>
+                <div><dt>People injured</dt><dd><code>Physical_Condition_L1 = Injured</code>. “No injury” is excluded.</dd></div>
+                <div><dt>Deaths / presumed deaths</dt><dd>Confirmed deaths plus “Missing (death presumed)”. Vessel totals are fallback-only when person rows are absent.</dd></div>
+                <div><dt>Serious outcome</dt><dd>Occurrence classification is Serious or Very serious.</dd></div>
+                <div><dt>Vessel age</dt><dd>Occurrence year minus vessel year built.</dd></div>
+              </dl>
+            </article>
+
+            <article class="panel source-files-panel wide-panel">
+              <div class="panel-header"><div><span class="panel-kicker">Reproducible snapshot</span><h2>Source-file fingerprints</h2></div><span class="panel-note">SHA-256</span></div>
+              <div id="sourceFiles" class="source-files"></div>
             </article>
 
             <article class="panel confidence-panel wide-panel">
@@ -273,8 +328,8 @@
         </section>
 
         <footer>
-          <div><strong>Maritime Safety Evidence Observatory</strong><span>Independent portfolio prototype using public MAIB data.</span></div>
-          <div><span id="footerUpdated">Source update —</span><span>Methodology-first design</span></div>
+          <div><strong>Built by Amanda Du</strong><span>Data Analyst portfolio project using public MAIB data.</span><a href="https://github.com/YanxiangDu2023" target="_blank" rel="noreferrer">GitHub profile ↗</a></div>
+          <div><span id="footerUpdated">Source update —</span><span id="footerBuilt">Build —</span><span>Methodology-first design</span></div>
         </footer>
       </main>
     </div>
