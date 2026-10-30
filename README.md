@@ -2,6 +2,10 @@
 
 An interactive portfolio prototype that turns public UK Marine Accident Investigation Branch (MAIB) occurrence data into an evidence-aware analytical dashboard.
 
+**[Open the live dashboard](https://maritime-safety-evidence-observatory.oakenwhale32768.chatgpt.site/)**
+
+The published snapshot contains 9,063 occurrence records, 9,830 linked vessel records and 3,040 affected-person records covering 2020–2026. The latest year is explicitly marked as partial.
+
 ## What it demonstrates
 
 - relational integration of occurrence, vessel and affected-person records;
@@ -16,7 +20,7 @@ An interactive portfolio prototype that turns public UK Marine Accident Investig
 - explicit separation of reported occurrence counts from exposure-adjusted risk;
 - source-linked investigation evidence;
 - an automatically assembled, print-ready evidence brief.
-- deterministic five-fold model validation, calibration and Brier-score reporting;
+- deterministic five-fold model validation with ROC AUC, average precision, calibration, Brier score, sensitivity, precision and specificity;
 - release-blocking relationship and coordinate checks plus source-file SHA-256 fingerprints.
 
 ## Data source
