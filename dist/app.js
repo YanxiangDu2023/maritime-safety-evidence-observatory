@@ -109,11 +109,13 @@ function setupFilters() {
 
 function resetFilters() {
   const { year_min, year_max } = state.data.meta;
-  state.filters = { yearStart: year_min, yearEnd: year_max, event: "All", vessel: "All", severity: "All" };
-  $("yearStart").value = year_min;
-  $("yearEnd").value = year_max;
-  $("yearStartLabel").textContent = year_min;
-  $("yearEndLabel").textContent = year_max;
+  const start = state.tab === "context" ? state.contextYear : year_min;
+  const end = state.tab === "context" ? state.contextYear : year_max;
+  state.filters = { yearStart: start, yearEnd: end, event: "All", vessel: "All", severity: "All" };
+  $("yearStart").value = start;
+  $("yearEnd").value = end;
+  $("yearStartLabel").textContent = start;
+  $("yearEndLabel").textContent = end;
   $("eventFilter").value = "All";
   $("vesselFilter").value = "All";
   $("severityFilter").value = "All";
@@ -139,14 +141,20 @@ function applyFilters() {
   renderEvidence();
 }
 
-function setFilterMode(isModelTab) {
+function setFilterMode(tab) {
+  const isModelTab = tab === "consequences";
+  const isContextTab = tab === "context";
   ["yearStart", "yearEnd", "eventFilter", "vesselFilter", "severityFilter", "resetFilters"].forEach((id) => {
     $(id).disabled = isModelTab;
   });
+  $("yearStart").disabled = isModelTab || isContextTab;
+  $("yearEnd").disabled = isModelTab || isContextTab;
   $("sidebar").classList.toggle("filters-disabled", isModelTab);
   $("filterModeNote").textContent = isModelTab
     ? "Full-snapshot model: filters are paused in this tab."
-    : "Filters apply to descriptive views.";
+    : isContextTab
+      ? "Year follows Context year; other filters remain active."
+      : "Filters apply to descriptive views.";
   if (isModelTab) {
     $("scopeCount").textContent = numberFormat.format(state.data.analysis.severity_model.n);
     $("scopeLabel").textContent = "full model";
@@ -354,7 +362,7 @@ function renderContextOccurrences() {
   if (!state.contextOccurrenceLayer) return;
   state.contextOccurrenceLayer.clearLayers();
   if (!$("contextOccurrences").checked) return;
-  const valid = state.filtered.filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lon));
+  const valid = state.filtered.filter((row) => row.year === state.contextYear && Number.isFinite(row.lat) && Number.isFinite(row.lon));
   const step = Math.max(1, Math.ceil(valid.length / 1500));
   valid.filter((_, index) => index % step === 0).forEach((row) => {
     L.circleMarker([row.lat, row.lon], { radius: serious(row) ? 3.8 : 2.7, color: serious(row) ? palette.red : "#132f3a", fillColor: serious(row) ? palette.red : "#f6f2e8", fillOpacity: .78, weight: .8 })
@@ -375,12 +383,12 @@ function renderContext() {
   if (!state.data || !state.contextData) return;
   const layerText = state.contextLayer === "traffic" ? `EMODnet ${state.contextYear} annual vessel-density average` : "EMODnet mean seabed depth";
   $("contextMapTitle").textContent = state.contextLayer === "traffic" ? "Vessel traffic density and reported occurrences" : "Water depth and reported occurrences";
-  $("contextMapNote").textContent = layerText;
+  $("contextMapNote").textContent = `${layerText} · ${state.contextYear} occurrences`;
   $("contextVessel").disabled = state.contextLayer !== "traffic";
   $("trafficCaveat").hidden = state.contextYear !== 2024;
   $("contextLegend").innerHTML = state.contextLayer === "traffic"
-    ? `<span><i class="context-swatch density"></i>Annual average vessel hours per km² per month</span><span><i class="context-dot occurrence"></i>Occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`
-    : `<span><i class="context-swatch depth"></i>Mean seabed depth</span><span><i class="context-dot occurrence"></i>Occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`;
+    ? `<span><i class="context-swatch density"></i>Annual average vessel hours per km² per month</span><span><i class="context-dot occurrence"></i>${state.contextYear} occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`
+    : `<span><i class="context-swatch depth"></i>Mean seabed depth</span><span><i class="context-dot occurrence"></i>${state.contextYear} occurrence sample</span><span><i class="context-dot serious"></i>Serious / very serious</span>`;
   renderPortContext();
   if (state.tab === "context") {
     initializeContextMap();
@@ -396,7 +404,10 @@ function setupContextControls() {
   $("contextVessel").value = state.contextVessel;
   $("contextOccurrences").checked = true;
   $("contextLayer").addEventListener("change", (event) => { state.contextLayer = event.target.value; renderContext(); });
-  $("contextYear").addEventListener("change", (event) => { state.contextYear = Number(event.target.value); renderContext(); });
+  $("contextYear").addEventListener("change", (event) => {
+    state.contextYear = Number(event.target.value);
+    syncOccurrenceYear(state.contextYear);
+  });
   $("contextVessel").addEventListener("change", (event) => { state.contextVessel = event.target.value; renderContext(); });
   $("contextOccurrences").addEventListener("change", renderContextOccurrences);
 }
@@ -666,17 +677,29 @@ function setupTabs() {
   document.querySelectorAll("[data-tab-jump]").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tabJump)));
 }
 
+function syncOccurrenceYear(year) {
+  state.filters.yearStart = year;
+  state.filters.yearEnd = year;
+  $("yearStart").value = year;
+  $("yearEnd").value = year;
+  $("yearStartLabel").textContent = year;
+  $("yearEndLabel").textContent = year;
+  $("contextYear").value = String(year);
+  applyFilters();
+}
+
 function switchTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tab}Panel`));
   const titles = { overview: "Reported occurrence overview", context: "Exposure & operating environment", patterns: "Pattern explorer", consequences: "Severity & human consequences", evidence: "Investigation evidence", quality: "Data confidence" };
   $("pageTitle").textContent = titles[tab];
-  setFilterMode(tab === "consequences");
+  setFilterMode(tab);
   if (tab === "overview") setTimeout(() => state.map?.invalidateSize(), 20);
   if (tab === "context") {
-    initializeContextMap();
-    renderContext();
+    const alignedYear = Math.max(2020, Math.min(2024, state.filters.yearEnd));
+    state.contextYear = alignedYear;
+    syncOccurrenceYear(alignedYear);
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -727,7 +750,7 @@ function setupBrief() {
 
 async function init() {
   try {
-    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json"), fetch("data/context.json?v=7")]);
+    const [response, contextResponse] = await Promise.all([fetch("data/dashboard.json"), fetch("data/context.json?v=8")]);
     if (!response.ok || !contextResponse.ok) throw new Error(`Data request failed: ${response.status}/${contextResponse.status}`);
     [state.data, state.contextData] = await Promise.all([response.json(), contextResponse.json()]);
     $("sourceLink").href = state.data.meta.source_url;
